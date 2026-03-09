@@ -1,40 +1,30 @@
-# ─────────────────────────────────────────────
-# Stage 1 – builder
-# ─────────────────────────────────────────────
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
-
 
 COPY requirements.txt .
 
 RUN pip install --upgrade pip \
  && pip install --no-cache-dir --prefix=/install -r requirements.txt
 
+ RUN pip install pytest pytest-asyncio pytest-cov httpx fakeredis[aioredis] aiosqlite
 
-# ─────────────────────────────────────────────
-# Stage 2 – runtime 
-# ─────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
-# Create a non-root user
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
 WORKDIR /app
 
-# Retrieve packages installed in the builder
 COPY --from=builder /install /usr/local
 
-# Copy the source code
 COPY app/ ./app/
 
-# Non-root user membership
 RUN chown -R appuser:appgroup /app
 
 USER appuser
 
-# Default environment variables (overridable via docker run -e)
 ENV OTT_REDIS_URL=redis://redis:6379 \
+    OTT_DATABASE_URL=postgresql+asyncpg://ott:ott@postgres:5432/ott \
     OTT_HOST=0.0.0.0 \
     OTT_PORT=8000 \
     OTT_LOG_LEVEL=info \
