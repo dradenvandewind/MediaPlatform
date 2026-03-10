@@ -1,12 +1,14 @@
 FROM python:3.12-slim AS builder
 
+
 WORKDIR /build
 
 COPY requirements.txt .
 
 RUN pip install --upgrade pip \
- && pip install --no-cache-dir --prefix=/install -r requirements.txt
-
+ && pip install --no-cache-dir --prefix=/install -r requirements.txt \
+ && pip install --no-cache-dir --prefix=/install \
+      pytest pytest-asyncio pytest-cov httpx fakeredis[aioredis] aiosqlite
 
 # ── Stage test ────────────────────────────────────────────────────────────────
 FROM python:3.12-slim AS test
@@ -21,8 +23,13 @@ COPY requirements-dev.txt .
 RUN pip install --no-cache-dir -r requirements-dev.txt
 
 # Copie le code source + les tests
-COPY app/ ./app/
-COPY tests/ ./tests/
+COPY app/             /app/
+COPY tests/           /tests/
+#COPY tests/pytest.ini ./pytest.ini   # ← racine /app, pas dans tests/
+
+RUN touch ./app/__init__.py          # ← package Python
+RUN chown -R appuser:appgroup /app
+
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -34,15 +41,20 @@ FROM python:3.12-slim AS runtime
 
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
+RUN apt-get update && apt-get install -y --no-install-recommends vim \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY --from=builder /install /usr/local
 
 COPY app/ ./app/
+COPY tests/ ./tests/
 
 RUN chown -R appuser:appgroup /app
 
 USER appuser
+#COPY app/.env .env  
 
 ENV OTT_REDIS_URL=redis://redis:6379 \
     OTT_DATABASE_URL=postgresql+asyncpg://ott:ott@postgres:5432/ott \
