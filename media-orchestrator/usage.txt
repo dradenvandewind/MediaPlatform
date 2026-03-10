@@ -1,27 +1,23 @@
-
+# 1
 
 docker compose build --no-cache && docker compose up
 
-
-
-
-# 4 - Access API documentation with your web browser
+# 2 - Access API documentation with your web browser
 
 http://localhost:8000/docs
 
 
-
-
-#5 -  Run tests
+# 3 -  Run tests
 docker compose exec orchestrator pytest -v --cov=app
 
 
-
-#6 -  Check logs
+# 4 -  Check logs
 docker compose logs -f orchestrator
 
 
+# 5 Stop and remove Volume
 
-#7 Stop and remove Volume
 docker compose down -v
+
+
 

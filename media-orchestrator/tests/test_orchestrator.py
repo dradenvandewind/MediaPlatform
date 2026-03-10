@@ -5,7 +5,7 @@ Tests de MediaOrchestrator :
 - get_next_stage
 - collect_stats
 - exceptions OrchestratorError / JobNotFoundError
-- monitor_jobs (cancel)
+- _monitor_jobs (cancel)
 - _record_to_status / _record_to_dict
 """
 
@@ -22,23 +22,23 @@ from app.orchestrator import JobNotFoundError, MediaOrchestrator, OrchestratorEr
 from tests.conftest import make_job_status
 
 
-# ── save_job_status ───────────────────────────────────────────────────────────
+# ── save_job ──────────────────────────────────────────────────────────────────
 
-class TestSaveJobStatus:
+class TestSaveJob:
     async def test_insert(self, orchestrator):
         js = make_job_status("job-save-01")
-        await orchestrator.save_job_status(js)
-        loaded = await orchestrator.load_job_status("job-save-01")
+        await orchestrator.save_job(js)
+        loaded = await orchestrator.load_job("job-save-01")
         assert loaded.job_id == "job-save-01"
         assert loaded.status == "pending"
 
     async def test_update(self, orchestrator):
         js = make_job_status("job-save-02")
-        await orchestrator.save_job_status(js)
+        await orchestrator.save_job(js)
         js.status        = "processing"
         js.current_stage = "transcoding"
-        await orchestrator.save_job_status(js)
-        loaded = await orchestrator.load_job_status("job-save-02")
+        await orchestrator.save_job(js)
+        loaded = await orchestrator.load_job("job-save-02")
         assert loaded.status        == "processing"
         assert loaded.current_stage == "transcoding"
 
@@ -52,16 +52,16 @@ class TestSaveJobStatus:
         db_module.get_session = bad_session
         try:
             with pytest.raises(OrchestratorError):
-                await orchestrator.save_job_status(make_job_status("job-err"))
+                await orchestrator.save_job(make_job_status("job-err"))
         finally:
             db_module.get_session = original
 
 
-# ── load_job_status ───────────────────────────────────────────────────────────
+# ── load_job ──────────────────────────────────────────────────────────────────
 
-class TestLoadJobStatus:
+class TestLoadJob:
     async def test_not_found_returns_none(self, orchestrator):
-        result = await orchestrator.load_job_status("nonexistent")
+        result = await orchestrator.load_job("nonexistent")
         assert result is None
 
     async def test_db_error_raises(self, orchestrator):
@@ -74,7 +74,7 @@ class TestLoadJobStatus:
         db_module.get_session = bad_session
         try:
             with pytest.raises(OrchestratorError):
-                await orchestrator.load_job_status("any")
+                await orchestrator.load_job("any")
         finally:
             db_module.get_session = original
 
@@ -84,9 +84,9 @@ class TestLoadJobStatus:
 class TestDeleteJob:
     async def test_delete_existing(self, orchestrator):
         js = make_job_status("job-del-01")
-        await orchestrator.save_job_status(js)
+        await orchestrator.save_job(js)
         await orchestrator.delete_job("job-del-01")
-        assert await orchestrator.load_job_status("job-del-01") is None
+        assert await orchestrator.load_job("job-del-01") is None
 
     async def test_delete_nonexistent_no_error(self, orchestrator):
         # Supprimer un job inexistant ne doit pas lever d'exception
@@ -115,14 +115,14 @@ class TestListJobs:
         assert jobs == []
 
     async def test_list_all(self, orchestrator):
-        await orchestrator.save_job_status(make_job_status("job-list-01", status="pending"))
-        await orchestrator.save_job_status(make_job_status("job-list-02", status="failed"))
+        await orchestrator.save_job(make_job_status("job-list-01", status="pending"))
+        await orchestrator.save_job(make_job_status("job-list-02", status="failed"))
         jobs = await orchestrator.list_jobs()
         assert len(jobs) == 2
 
     async def test_filter_by_status(self, orchestrator):
-        await orchestrator.save_job_status(make_job_status("job-f-01", status="pending"))
-        await orchestrator.save_job_status(make_job_status("job-f-02", status="failed"))
+        await orchestrator.save_job(make_job_status("job-f-01", status="pending"))
+        await orchestrator.save_job(make_job_status("job-f-02", status="failed"))
         pending = await orchestrator.list_jobs(status_filter="pending")
         assert len(pending) == 1
         assert pending[0]["status"] == "pending"
@@ -189,8 +189,8 @@ class TestCollectStats:
         assert "failed"         in stats["jobs_by_status"]
 
     async def test_counts_jobs(self, orchestrator):
-        await orchestrator.save_job_status(make_job_status("job-stats-01", status="pending"))
-        await orchestrator.save_job_status(make_job_status("job-stats-02", status="failed"))
+        await orchestrator.save_job(make_job_status("job-stats-01", status="pending"))
+        await orchestrator.save_job(make_job_status("job-stats-02", status="failed"))
         stats = await orchestrator.collect_stats()
         assert stats["jobs_by_status"]["pending"] >= 1
         assert stats["jobs_by_status"]["failed"]  >= 1
@@ -201,11 +201,11 @@ class TestCollectStats:
         assert stats["streams"]["ingest"]["queue_length"] >= 1
 
 
-# ── monitor_jobs ──────────────────────────────────────────────────────────────
+# ── _monitor_jobs ─────────────────────────────────────────────────────────────
 
 class TestMonitorJobs:
     async def test_cancels_cleanly(self, orchestrator):
-        task = asyncio.create_task(orchestrator.monitor_jobs())
+        task = asyncio.create_task(orchestrator._monitor_jobs())
         await asyncio.sleep(0.05)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -224,7 +224,7 @@ class TestMonitorJobs:
 
         monkeypatch.setattr(asyncio, "sleep", fast_sleep)
         with pytest.raises(asyncio.CancelledError):
-            await orchestrator.monitor_jobs()
+            await orchestrator._monitor_jobs()
 
 
 # ── exceptions ────────────────────────────────────────────────────────────────
@@ -243,12 +243,12 @@ class TestExceptions:
 
 class TestConversions:
     def _make_record(self, job_id="job-conv-01", status=JobStatusEnum.pending):
-        r              = MagicMock(spec=JobRecord)
-        r.job_id       = job_id
-        r.status       = status
+        r               = MagicMock(spec=JobRecord)
+        r.job_id        = job_id
+        r.status        = status
         r.current_stage = "ingest"
-        r.created_at   = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        r.updated_at   = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        r.created_at    = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        r.updated_at    = datetime(2024, 1, 1, tzinfo=timezone.utc)
         r.metadata_json = json.dumps({"video_url": "s3://v.mp4"})
         r.results_json  = "{}"
         r.error         = None

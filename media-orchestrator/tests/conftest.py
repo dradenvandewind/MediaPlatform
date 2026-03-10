@@ -77,7 +77,7 @@ async def orchestrator(engine, fake_redis):
     orc.redis = fake_redis
 
     # Initialiser les consumer groups sans appel réseau réel
-    await orc.initialize_consumer_groups()
+    await orc._initialize_consumer_groups()  # méthode privée
 
     yield orc
 
@@ -102,10 +102,10 @@ async def client(orchestrator) -> AsyncGenerator[AsyncClient, None]:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def make_job_status(
-    job_id:        str  = "job-test001",
-    status:        str  = "pending",
-    current_stage: str  = "ingest",
-    error:         str  = None,
+    job_id:        str = "job-test001",
+    status:        str = "pending",
+    current_stage: str = "ingest",
+    error:         str = None,
 ) -> JobStatus:
     now = datetime.now(timezone.utc).isoformat()
     return JobStatus(
