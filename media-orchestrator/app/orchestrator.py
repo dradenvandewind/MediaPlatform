@@ -115,6 +115,8 @@ class MediaOrchestrator:
                     record.error         = status.error
 
                 await session.commit()
+            except OrchestratorError:
+                raise
             except Exception as exc:
                 await session.rollback()
                 logger.error("DB save failed for job %s: %s", status.job_id, exc)
@@ -130,6 +132,8 @@ class MediaOrchestrator:
                 if record is None:
                     return None
                 return self._record_to_status(record)
+            except OrchestratorError:
+                raise
             except Exception as exc:
                 logger.error("DB load failed for job %s: %s", job_id, exc)
                 raise OrchestratorError(f"Failed to load job {job_id}") from exc
@@ -142,6 +146,8 @@ class MediaOrchestrator:
                 )
                 await session.commit()
                 logger.info("🗑️  Job %s deleted from DB", job_id)
+            except OrchestratorError:
+                raise
             except Exception as exc:
                 await session.rollback()
                 logger.error("DB delete failed for job %s: %s", job_id, exc)
@@ -156,6 +162,8 @@ class MediaOrchestrator:
                 result  = await session.execute(stmt)
                 records = result.scalars().all()
                 return [self._record_to_dict(r) for r in records]
+            except OrchestratorError:
+                raise
             except Exception as exc:
                 logger.error("DB list failed: %s", exc)
                 raise OrchestratorError("Failed to list jobs") from exc
