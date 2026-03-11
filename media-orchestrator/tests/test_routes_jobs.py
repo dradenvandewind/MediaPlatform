@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch
 from app.orchestrator import OrchestratorError
 from tests.conftest import make_job_status
 
+from sqlalchemy import delete as sa_delete
+
 
 SUBMIT_PAYLOAD = {
     "video_url":    "s3://bucket/video.mp4",

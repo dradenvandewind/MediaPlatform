@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.models import AdvanceJobRequest, FailJobRequest, JobStatus, JobSubmitRequest
 from app.orchestrator import JobNotFoundError, OrchestratorError, MediaOrchestrator
 from .deps import get_orchestrator
+from typing import Annotated, Optional
+from fastapi import Query, Depends
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -59,7 +61,7 @@ async def submit_job(
 
 @router.get("/list")
 async def list_jobs(
-    status: Optional[str] = Query(None, description="Filtrer: pending|processing|completed|failed"),
+    status: Annotated[Optional[str], Query(description="Filtrer: pending|processing|completed|failed")] = None,
     orc: MediaOrchestrator = Depends(get_orchestrator),
 ):
     try:

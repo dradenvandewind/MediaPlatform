@@ -21,3 +21,8 @@ docker compose down -v
 
 
 
+# prod
+
+docker compose -f docker-compose-prod.yml up
+
+
