@@ -19,21 +19,20 @@ class TestGlobalExceptionHandler:
 
 class TestLifespan:
     async def test_startup_and_shutdown(self):
-        """Vérifie que startup/shutdown s'enchaînent sans erreur avec des mocks"""
         from app.main import app
         from app.orchestrator import MediaOrchestrator
 
         mock_orc = MagicMock(spec=MediaOrchestrator)
         mock_orc.startup  = AsyncMock()
         mock_orc.shutdown = AsyncMock()
+        mock_orc.redis    = AsyncMock()
+        mock_orc.redis.ping = AsyncMock()
 
-        with patch("app.main.MediaOrchestrator", return_value=mock_orc):
-            from httpx import ASGITransport, AsyncClient
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test",
-            ) as c:
-                r = await c.get("/health")
-                # L'app démarre et répond même avec l'orchestrateur mocké
-                # (app.state.orchestrator est déjà injecté par la fixture client)
-                assert r.status_code in (200, 500)
+        app.state.orchestrator = mock_orc   # ← injection directe
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as c:
+            r = await c.get("/health")
+            assert r.status_code in (200, 500)
