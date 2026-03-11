@@ -37,12 +37,21 @@ class TestCreateAndDispose:
         # create_tables must be able to run multiple times (idempotent)
         db_module._engine = engine
         await create_tables()
-
+    """
     async def test_dispose_engine(self, engine):
         db_module._engine = engine
         await dispose_engine()
         # Réinitialiser pour les autres tests
         db_module._engine = engine
+    """
+    async def test_dispose_engine(self):
+        # Utiliser un engine jetable, pas le partagé session-scoped
+        from sqlalchemy.ext.asyncio import create_async_engine
+        local_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+        db_module._engine = local_engine
+        await dispose_engine()
+        # Remettre à None proprement
+        db_module._engine = None
 
 
 class TestJobRecord:
