@@ -2,9 +2,9 @@
 Tests de main.py : global exception handler + lifespan
 """
 
+from httpx import ASGITransport, AsyncClient
+from unittest.mock import AsyncMock, MagicMock
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-
 
 class TestGlobalExceptionHandler:
     async def test_unhandled_exception_returns_500(self, client, orchestrator):
