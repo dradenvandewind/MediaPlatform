@@ -63,18 +63,16 @@ class TestLoadJob:
         assert result is None
 
     async def test_db_error_raises(self, orchestrator):
-        import app.database as db_module
-        original = db_module.get_session
-
-        def bad_session():
-            raise RuntimeError("DB down")
-
-        db_module.get_session = bad_session
+        import app.orchestrator as orc_module
+        original = orc_module.get_session
+        orc_module.get_session = bad_session
         try:
             with pytest.raises(OrchestratorError):
                 await orchestrator.load_job("any")
         finally:
-            db_module.get_session = original
+            orc_module.get_session = original
+                   
+            
 
 
 # ── delete_job ────────────────────────────────────────────────────────────────
@@ -85,24 +83,21 @@ class TestDeleteJob:
         await orchestrator.save_job(js)
         await orchestrator.delete_job("job-del-01")
         assert await orchestrator.load_job("job-del-01") is None
+        
 
     async def test_delete_nonexistent_no_error(self, orchestrator):
         # Supprimer un job inexistant ne doit pas lever d'exception
         await orchestrator.delete_job("ghost-job")
 
     async def test_db_error_raises(self, orchestrator):
-        import app.database as db_module
-        original = db_module.get_session
-
-        def bad_session():
-            raise RuntimeError("DB down")
-
-        db_module.get_session = bad_session
+        import app.orchestrator as orc_module
+        original = orc_module.get_session
+        orc_module.get_session = bad_session
         try:
             with pytest.raises(OrchestratorError):
                 await orchestrator.delete_job("any")
         finally:
-            db_module.get_session = original
+            orc_module.get_session = original
 
 
 # ── list_jobs ─────────────────────────────────────────────────────────────────
@@ -126,18 +121,15 @@ class TestListJobs:
         assert pending[0]["status"] == "pending"
 
     async def test_db_error_raises(self, orchestrator):
-        import app.database as db_module
-        original = db_module.get_session
-
-        def bad_session():
-            raise RuntimeError("DB down")
-
-        db_module.get_session = bad_session
+        import app.orchestrator as orc_module
+        original = orc_module.get_session
+        orc_module.get_session = bad_session
         try:
             with pytest.raises(OrchestratorError):
                 await orchestrator.list_jobs()
         finally:
-            db_module.get_session = original
+            orc_module.get_session = original
+        
 
 
 # ── send_to_stage ─────────────────────────────────────────────────────────────

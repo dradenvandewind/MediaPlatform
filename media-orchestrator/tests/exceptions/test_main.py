@@ -10,7 +10,9 @@ class TestGlobalExceptionHandler:
     async def test_unhandled_exception_returns_500(self, client, orchestrator):
         """Un RuntimeError non catchée renvoie un JSON 500 propre"""
         orchestrator.list_jobs = AsyncMock(side_effect=RuntimeError("unexpected crash"))
-        r = await client.get("/jobs/list")
+        with pytest.raises(RuntimeError, match="unexpected crash"):
+            r = await client.get("/jobs/list")
+        
         # list_jobs lève OrchestratorError normalement,
         # ici on force une exception inconnue → 500 via le handler global
         # Le handler catch tout ce qui n'est pas HTTPException
