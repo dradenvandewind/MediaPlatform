@@ -8,7 +8,7 @@ _OTT_VARS = ["OTT_REDIS_URL", "OTT_DATABASE_URL", "OTT_HOST", "OTT_PORT", "OTT_L
 
 
 class TestSettings:
-    def test_defaults(self):
+    def test_defaults(self,monkeypatch):
         for k in _OTT_VARS:
             monkeypatch.delenv(k, raising=False)
         s = Settings(_env_file=None, _env_ignore_empty=True)
