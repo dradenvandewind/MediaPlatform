@@ -71,7 +71,7 @@ class TestStats:
         assert "jobs_by_status" in data
 
     async def test_counts_reflect_db(self, client, orchestrator):
-        await orchestrator.save_job_status(make_job_status("job-stat-r-01", status="pending"))
+        await orchestrator.save_job(make_job_status("job-stat-r-01", status="pending"))
         r = await client.get("/stats")
         assert r.json()["jobs_by_status"]["pending"] >= 1
 

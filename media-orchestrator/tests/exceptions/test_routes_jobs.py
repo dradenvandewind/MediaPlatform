@@ -29,12 +29,12 @@ class TestSubmitJob:
         assert r.status_code == 422
 
     async def test_orchestrator_error_returns_503(self, client, orchestrator):
-        orchestrator.save_job_status = AsyncMock(side_effect=OrchestratorError("DB down"))
+        orchestrator.save_job = AsyncMock(side_effect=OrchestratorError("DB down"))
         r = await client.post("/jobs/submit", json=SUBMIT_PAYLOAD)
         assert r.status_code == 503
 
     async def test_unexpected_error_returns_500(self, client, orchestrator):
-        orchestrator.save_job_status = AsyncMock(side_effect=RuntimeError("boom"))
+        orchestrator.save_job = AsyncMock(side_effect=RuntimeError("boom"))
         r = await client.post("/jobs/submit", json=SUBMIT_PAYLOAD)
         assert r.status_code == 500
 
@@ -46,12 +46,12 @@ class TestListJobs:
         assert r.json()["total"] == 0
 
     async def test_with_jobs(self, client, orchestrator):
-        await orchestrator.save_job_status(make_job_status("job-list-r-01"))
+        await orchestrator.save_job(make_job_status("job-list-r-01"))
         r = await client.get("/jobs/list")
         assert r.json()["total"] >= 1
 
     async def test_filter_by_status(self, client, orchestrator):
-        await orchestrator.save_job_status(make_job_status("job-list-f-01", status="failed"))
+        await orchestrator.save_job(make_job_status("job-list-f-01", status="failed"))
         r = await client.get("/jobs/list?status=failed")
         assert r.status_code == 200
         for job in r.json()["jobs"]:
@@ -65,7 +65,7 @@ class TestListJobs:
 
 class TestGetJobStatus:
     async def test_found(self, client, orchestrator):
-        await orchestrator.save_job_status(make_job_status("job-get-01"))
+        await orchestrator.save_job(make_job_status("job-get-01"))
         r = await client.get("/jobs/job-get-01/status")
         assert r.status_code == 200
         assert r.json()["job_id"] == "job-get-01"
@@ -75,14 +75,14 @@ class TestGetJobStatus:
         assert r.status_code == 404
 
     async def test_orchestrator_error_returns_503(self, client, orchestrator):
-        orchestrator.load_job_status = AsyncMock(side_effect=OrchestratorError("DB down"))
+        orchestrator.load_job = AsyncMock(side_effect=OrchestratorError("DB down"))
         r = await client.get("/jobs/any/status")
         assert r.status_code == 503
 
 
 class TestAdvanceJob:
     async def test_advance_to_next_stage(self, client, orchestrator):
-        await orchestrator.save_job_status(make_job_status("job-adv-01"))
+        await orchestrator.save_job(make_job_status("job-adv-01"))
         r = await client.post("/jobs/job-adv-01/next", json={
             "stage":  "ingest",
             "result": {"output": "s3://out.mp4"},
@@ -94,7 +94,7 @@ class TestAdvanceJob:
 
     async def test_advance_last_stage_deletes_job(self, client, orchestrator):
         js = make_job_status("job-adv-last", current_stage="packaging")
-        await orchestrator.save_job_status(js)
+        await orchestrator.save_job(js)
         r = await client.post("/jobs/job-adv-last/next", json={
             "stage":  "packaging",
             "result": {},
@@ -102,26 +102,26 @@ class TestAdvanceJob:
         assert r.status_code == 200
         assert r.json()["status"] == "completed"
         # Job supprimé
-        assert await orchestrator.load_job_status("job-adv-last") is None
+        assert await orchestrator.load_job("job-adv-last") is None
 
     async def test_not_found(self, client):
         r = await client.post("/jobs/ghost/next", json={"stage": "ingest", "result": {}})
         assert r.status_code == 404
 
     async def test_orchestrator_error_returns_503(self, client, orchestrator):
-        orchestrator.load_job_status = AsyncMock(side_effect=OrchestratorError("DB down"))
+        orchestrator.load_job = AsyncMock(side_effect=OrchestratorError("DB down"))
         r = await client.post("/jobs/any/next", json={"stage": "ingest", "result": {}})
         assert r.status_code == 503
 
     async def test_unexpected_error_returns_500(self, client, orchestrator):
-        orchestrator.load_job_status = AsyncMock(side_effect=RuntimeError("boom"))
+        orchestrator.load_job = AsyncMock(side_effect=RuntimeError("boom"))
         r = await client.post("/jobs/any/next", json={"stage": "ingest", "result": {}})
         assert r.status_code == 500
 
 
 class TestMarkJobFailed:
     async def test_mark_failed(self, client, orchestrator):
-        await orchestrator.save_job_status(make_job_status("job-fail-01"))
+        await orchestrator.save_job(make_job_status("job-fail-01"))
         r = await client.post("/jobs/job-fail-01/failed", json={
             "stage": "transcoding",
             "error": "OOM",
@@ -129,7 +129,7 @@ class TestMarkJobFailed:
         assert r.status_code == 200
         assert r.json()["status"] == "failed"
 
-        loaded = await orchestrator.load_job_status("job-fail-01")
+        loaded = await orchestrator.load_job("job-fail-01")
         assert loaded.status == "failed"
         assert "OOM" in loaded.error
 
@@ -138,19 +138,19 @@ class TestMarkJobFailed:
         assert r.status_code == 404
 
     async def test_orchestrator_error_returns_503(self, client, orchestrator):
-        orchestrator.load_job_status = AsyncMock(side_effect=OrchestratorError("DB down"))
+        orchestrator.load_job = AsyncMock(side_effect=OrchestratorError("DB down"))
         r = await client.post("/jobs/any/failed", json={"error": "x"})
         assert r.status_code == 503
 
     async def test_unexpected_error_returns_500(self, client, orchestrator):
-        orchestrator.load_job_status = AsyncMock(side_effect=RuntimeError("boom"))
+        orchestrator.load_job = AsyncMock(side_effect=RuntimeError("boom"))
         r = await client.post("/jobs/any/failed", json={"error": "x"})
         assert r.status_code == 500
 
 
 class TestDeleteJob:
     async def test_delete(self, client, orchestrator):
-        await orchestrator.save_job_status(make_job_status("job-del-r-01"))
+        await orchestrator.save_job(make_job_status("job-del-r-01"))
         r = await client.delete("/jobs/job-del-r-01")
         assert r.status_code == 200
         assert r.json()["success"] is True
@@ -160,6 +160,6 @@ class TestDeleteJob:
         assert r.status_code == 404
 
     async def test_orchestrator_error_returns_503(self, client, orchestrator):
-        orchestrator.load_job_status = AsyncMock(side_effect=OrchestratorError("DB down"))
+        orchestrator.load_job = AsyncMock(side_effect=OrchestratorError("DB down"))
         r = await client.delete("/jobs/any")
         assert r.status_code == 503
