@@ -87,15 +87,13 @@ class MediaOrchestrator:
     # ── PostgreSQL helpers ────────────────────────────────────────────────────
 
     async def save_job(self, status: JobStatus) -> None:
-        async with get_session() as session:
-            try:
+        try:
+            async with get_session() as session:
                 result = await session.execute(
                     select(JobRecord).where(JobRecord.job_id == status.job_id)
                 )
                 record = result.scalar_one_or_none()
-
                 now = datetime.now(timezone.utc)
-
                 if record is None:
                     record = JobRecord(
                         job_id        = status.job_id,
@@ -113,18 +111,16 @@ class MediaOrchestrator:
                     record.updated_at    = now
                     record.results_json  = json.dumps(status.results)
                     record.error         = status.error
-
                 await session.commit()
-            except OrchestratorError:
-                raise
-            except Exception as exc:
-                await session.rollback()
-                logger.error("DB save failed for job %s: %s", status.job_id, exc)
-                raise OrchestratorError(f"Failed to save job {status.job_id}") from exc
+        except OrchestratorError:
+            raise
+        except Exception as exc:
+            logger.error("DB save failed for job %s: %s", status.job_id, exc)
+            raise OrchestratorError(f"Failed to save job {status.job_id}") from exc
 
     async def load_job(self, job_id: str) -> Optional[JobStatus]:
-        async with get_session() as session:
-            try:
+        try:
+            async with get_session() as session:
                 result = await session.execute(
                     select(JobRecord).where(JobRecord.job_id == job_id)
                 )
@@ -132,42 +128,41 @@ class MediaOrchestrator:
                 if record is None:
                     return None
                 return self._record_to_status(record)
-            except OrchestratorError:
-                raise
-            except Exception as exc:
-                logger.error("DB load failed for job %s: %s", job_id, exc)
-                raise OrchestratorError(f"Failed to load job {job_id}") from exc
+        except OrchestratorError:
+            raise
+        except Exception as exc:
+            logger.error("DB load failed for job %s: %s", job_id, exc)
+            raise OrchestratorError(f"Failed to load job {job_id}") from exc
 
     async def delete_job(self, job_id: str) -> None:
-        async with get_session() as session:
-            try:
+        try:
+            async with get_session() as session:
                 await session.execute(
                     delete(JobRecord).where(JobRecord.job_id == job_id)
                 )
                 await session.commit()
                 logger.info("🗑️  Job %s deleted from DB", job_id)
-            except OrchestratorError:
-                raise
-            except Exception as exc:
-                await session.rollback()
-                logger.error("DB delete failed for job %s: %s", job_id, exc)
-                raise OrchestratorError(f"Failed to delete job {job_id}") from exc
+        except OrchestratorError:
+            raise
+        except Exception as exc:
+            logger.error("DB delete failed for job %s: %s", job_id, exc)
+            raise OrchestratorError(f"Failed to delete job {job_id}") from exc
 
     async def list_jobs(self, status_filter: Optional[str] = None) -> List[Dict]:
-        async with get_session() as session:
-            try:
+        try:
+            async with get_session() as session:
                 stmt = select(JobRecord).order_by(JobRecord.created_at.desc())
                 if status_filter:
                     stmt = stmt.where(JobRecord.status == JobStatusEnum(status_filter))
                 result  = await session.execute(stmt)
                 records = result.scalars().all()
                 return [self._record_to_dict(r) for r in records]
-            except OrchestratorError:
-                raise
-            except Exception as exc:
-                logger.error("DB list failed: %s", exc)
-                raise OrchestratorError("Failed to list jobs") from exc
-
+        except OrchestratorError:
+            raise
+        except Exception as exc:
+            logger.error("DB list failed: %s", exc)
+            raise OrchestratorError("Failed to list jobs") from exc
+    
     # ── Redis Stream helpers ──────────────────────────────────────────────────
 
     async def send_to_stage(self, stage: str, job_data: Dict[str, Any]) -> None:
@@ -223,7 +218,7 @@ class MediaOrchestrator:
                 await asyncio.sleep(60)
                 # TODO: détecter les jobs processing > 30 min et les relancer
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as exc:
                 logger.error("Monitor error: %s", exc)
 

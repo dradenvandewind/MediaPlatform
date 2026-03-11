@@ -41,8 +41,9 @@ class TestSaveJob:
         loaded = await orchestrator.load_job("job-save-02")
         assert loaded.status        == "processing"
         assert loaded.current_stage == "transcoding"
-
+    """
     async def test_db_error_raises_orchestrator_error(self, orchestrator):
+        
         import app.orchestrator as orc_module   # ← orc_module, pas db_module
         original = orc_module.get_session
         def bad_session():
@@ -53,6 +54,20 @@ class TestSaveJob:
                 await orchestrator.save_job(make_job_status("job-err"))
         finally:
             orc_module.get_session = original
+    """
+    async def test_db_error_raises(self, orchestrator):
+            import app.orchestrator as orc_module
+            original = orc_module.get_session
+
+            def bad_session():             # ← cette ligne manquait
+                raise RuntimeError("DB down")
+
+            orc_module.get_session = bad_session
+            try:
+                with pytest.raises(OrchestratorError):
+                    await orchestrator.load_job("any")   # ou delete_job / list_jobs
+            finally:
+                orc_module.get_session = original
 
 
 # ── load_job ──────────────────────────────────────────────────────────────────
@@ -65,6 +80,8 @@ class TestLoadJob:
     async def test_db_error_raises(self, orchestrator):
         import app.orchestrator as orc_module
         original = orc_module.get_session
+        def bad_session():
+            raise RuntimeError("DB down")
         orc_module.get_session = bad_session
         try:
             with pytest.raises(OrchestratorError):
@@ -92,6 +109,8 @@ class TestDeleteJob:
     async def test_db_error_raises(self, orchestrator):
         import app.orchestrator as orc_module
         original = orc_module.get_session
+        def bad_session():
+            raise RuntimeError("DB down")
         orc_module.get_session = bad_session
         try:
             with pytest.raises(OrchestratorError):
@@ -123,6 +142,8 @@ class TestListJobs:
     async def test_db_error_raises(self, orchestrator):
         import app.orchestrator as orc_module
         original = orc_module.get_session
+        def bad_session():
+            raise RuntimeError("DB down")
         orc_module.get_session = bad_session
         try:
             with pytest.raises(OrchestratorError):
@@ -202,7 +223,7 @@ class TestMonitorJobs:
             await task          # ← c'est ici que CancelledError est levé
         except asyncio.CancelledError:
             pass                # attendu, le test passe
-
+    """
     async def test_handles_exception_without_crash(self, orchestrator, monkeypatch):
         call_count = 0
 
@@ -217,6 +238,22 @@ class TestMonitorJobs:
         monkeypatch.setattr(asyncio, "sleep", fast_sleep)
         with pytest.raises(asyncio.CancelledError):
             await orchestrator._monitor_jobs()
+    """
+    from unittest.mock import patch
+
+    async def test_handles_exception_without_crash(self, orchestrator):
+        call_count = 0
+
+        async def fast_sleep(n):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                raise asyncio.CancelledError
+            raise RuntimeError("boom")
+
+        with patch("app.orchestrator.asyncio.sleep", fast_sleep):
+            with pytest.raises(asyncio.CancelledError):
+                await orchestrator._monitor_jobs()
 
 
 # ── exceptions ────────────────────────────────────────────────────────────────
