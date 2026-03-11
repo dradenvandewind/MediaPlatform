@@ -44,15 +44,16 @@ _session_factory = None
 
 def init_engine(database_url: str):
     global _engine, _session_factory
+    kwargs = {}
+    if not database_url.startswith("sqlite"):
+        kwargs = {"pool_size": 10, "max_overflow": 20}
     _engine = create_async_engine(
         database_url,
         echo=False,
         pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20,
+        **kwargs,
     )
     _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
-
 
 async def create_tables():
     async with _engine.begin() as conn:

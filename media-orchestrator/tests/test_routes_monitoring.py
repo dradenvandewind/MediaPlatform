@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch
 from app.orchestrator import OrchestratorError
 from tests.conftest import make_job_status
 
+from sqlalchemy import delete as sa_delete
+
 
 class TestHealth:
     async def test_healthy(self, client):

@@ -8,7 +8,7 @@ from sqlalchemy import select
 import app.database as db_module
 from app.database import (
     Base, JobRecord, JobStatusEnum,
-    create_tables, dispose_engine, get_session, init_engine,
+    create_tables, dispose_engine, get_session, init_engine
 )
 
 
@@ -22,28 +22,28 @@ class TestJobStatusEnum:
 
 class TestInitEngine:
     def test_sets_globals(self):
-        init_engine("sqlite+aiosqlite:///:memory:")
-        assert db_module._engine          is not None
-        assert db_module._session_factory is not None
+        import app.database as db_module
+        original_engine  = db_module._engine
+        original_factory = db_module._session_factory
+        try:
+            init_engine("sqlite+aiosqlite:///:memory:")
+            assert db_module._engine          is not None
+            assert db_module._session_factory is not None
+        finally:
+            db_module._engine          = original_engine
+            db_module._session_factory = original_factory
 
     def test_get_session_returns_session(self):
         init_engine("sqlite+aiosqlite:///:memory:")
         s = get_session()
         assert s is not None
 
-
 class TestCreateAndDispose:
     async def test_create_tables(self, engine):
         # create_tables must be able to run multiple times (idempotent)
         db_module._engine = engine
         await create_tables()
-    """
-    async def test_dispose_engine(self, engine):
-        db_module._engine = engine
-        await dispose_engine()
-        # Réinitialiser pour les autres tests
-        db_module._engine = engine
-    """
+
     async def test_dispose_engine(self):
         # Utiliser un engine jetable, pas le partagé session-scoped
         from sqlalchemy.ext.asyncio import create_async_engine

@@ -1,10 +1,3 @@
-"""
-Fixtures partagées entre tous les tests
-- PostgreSQL : SQLite en mémoire (pas besoin de PG réel)
-- Redis      : fakeredis (pas besoin de Redis réel)
-- App        : client httpx avec lifespan mocké
-"""
-
 import asyncio
 import json
 from datetime import datetime, timezone
@@ -15,6 +8,7 @@ import fakeredis.aioredis as fakeredis
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import delete as sa_delete                          # ← AJOUT
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import Base, JobRecord, JobStatusEnum, get_session
@@ -22,14 +16,11 @@ from app.models import JobStatus
 from app.orchestrator import MediaOrchestrator
 
 
-# ── SQLite in-memory engine ───────────────────────────────────────────────────
-
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
 
 @pytest_asyncio.fixture(scope="session")
 async def engine():
-    from sqlalchemy.ext.asyncio import create_async_engine
     eng = create_async_engine(TEST_DB_URL, echo=False)
     async with eng.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -43,13 +34,9 @@ async def session(engine) -> AsyncGenerator[AsyncSession, None]:
     async with factory() as s:
         yield s
         await s.rollback()
-        # Nettoyer la table entre chaque test
-        from sqlalchemy import delete
-        await s.execute(delete(JobRecord))
+        await s.execute(sa_delete(JobRecord))
         await s.commit()
 
-
-# ── Fake Redis ────────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
 async def fake_redis():
@@ -58,48 +45,44 @@ async def fake_redis():
     await r.aclose()
 
 
-# ── Orchestrateur avec mocks ──────────────────────────────────────────────────
-
 @pytest_asyncio.fixture
 async def orchestrator(engine, fake_redis):
-    """Orchestrateur branché sur SQLite + fakeredis"""
     import app.database as db_module
 
-    # Remplacer l'engine global par le SQLite de test
     factory = async_sessionmaker(engine, expire_on_commit=False)
     db_module._engine          = engine
     db_module._session_factory = factory
+
+    # Nettoyer AVANT le test
+    async with factory() as s:
+        await s.execute(sa_delete(JobRecord))
+        await s.commit()
 
     orc = MediaOrchestrator(
         redis_url    = "redis://localhost:6379",
         database_url = TEST_DB_URL,
     )
     orc.redis = fake_redis
-
-    # Initialiser les consumer groups sans appel réseau réel
-    await orc._initialize_consumer_groups()  # méthode privée
+    await orc._initialize_consumer_groups()
 
     yield orc
 
+    # Nettoyer APRÈS le test
+    async with factory() as s:
+        await s.execute(sa_delete(JobRecord))
+        await s.commit()
 
-# ── Client HTTP ───────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
 async def client(orchestrator) -> AsyncGenerator[AsyncClient, None]:
-    """Client httpx avec l'app FastAPI, lifespan bypassé"""
     from app.main import app
-
-    # Injecter l'orchestrateur directement dans app.state
     app.state.orchestrator = orchestrator
-
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
     ) as c:
         yield c
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def make_job_status(
     job_id:        str = "job-test001",
