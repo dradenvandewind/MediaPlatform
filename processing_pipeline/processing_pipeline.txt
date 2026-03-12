@@ -1,0 +1,22 @@
+media_pipeline/
+├── main.py                  ← single CLI entrypoint 
+├── pyproject.toml
+├── shared/
+│   ├── config.py            ← all environnemmnt variables
+│   ├── retry.py             ← @async_retry decorator
+│   ├── s3.py                ← S3Manager (OOP, session partagée, multipart)
+│   ├── worker.py            ← BaseWorker (publish, checkpoint)
+│   └── app_factory.py       ← create_worker_app() – /health + /process
+├── ingest/
+│   ├── schemas.py           ← IngestRequest / IngestResponse (Pydantic)
+│   ├── worker.py            ← IngestWorker (download → probe → upload)
+│   └── app.py               ← create_ingest_app() + route /ingest
+├── transcoder/
+│   ├── worker.py
+│   └── app.py
+├── audio/
+│   ├── worker.py
+│   └── app.py
+└── packager/
+    ├── worker.py
+    └── app.py

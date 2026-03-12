@@ -1,0 +1,27 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    pipeline: ott
+
+scrape_configs:
+
+  - job_name: ingest
+    static_configs:
+      - targets: ['ingest:8080']
+    metrics_path: /metrics
+
+  - job_name: transcoder
+    static_configs:
+      - targets: ['transcoder:8080']
+    metrics_path: /metrics
+
+  - job_name: audio
+    static_configs:
+      - targets: ['audio:8080']
+    metrics_path: /metrics
+
+  - job_name: packager
+    static_configs:
+      - targets: ['packager:8080']
+    metrics_path: /metrics

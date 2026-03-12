@@ -1,0 +1,179 @@
+{
+  "title": "OTT Pipeline",
+  "uid": "ott-pipeline",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "tags": ["ott", "pipeline"],
+  "panels": [
+
+    {
+      "id": 1,
+      "title": "Jobs acceptés / minute",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [{
+        "datasource": { "uid": "prometheus" },
+        "expr": "rate(ott_jobs_total{status=\"accepted\"}[1m])",
+        "legendFormat": "{{node}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } } }
+    },
+
+    {
+      "id": 2,
+      "title": "Jobs en cours",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+      "targets": [{
+        "datasource": { "uid": "prometheus" },
+        "expr": "sum by (node) (ott_jobs_in_progress)",
+        "legendFormat": "{{node}}"
+      }],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" },
+        "thresholds": { "steps": [
+          { "value": 0, "color": "green" },
+          { "value": 5, "color": "orange" },
+          { "value": 10, "color": "red" }
+        ]}
+      }}
+    },
+
+    {
+      "id": 3,
+      "title": "Taux d'erreur (%)",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
+      "targets": [{
+        "datasource": { "uid": "prometheus" },
+        "expr": "100 * sum(rate(ott_jobs_total{status=\"failed\"}[5m])) / sum(rate(ott_jobs_total[5m]))",
+        "legendFormat": "Error rate"
+      }],
+      "fieldConfig": { "defaults": { "unit": "percent",
+        "color": { "mode": "thresholds" },
+        "thresholds": { "steps": [
+          { "value": 0, "color": "green" },
+          { "value": 1, "color": "orange" },
+          { "value": 5, "color": "red" }
+        ]}
+      }}
+    },
+
+    {
+      "id": 4,
+      "title": "Durée de traitement p50 / p95 / p99 (s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": { "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum by (node, le) (rate(ott_job_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50 {{node}}"
+        },
+        {
+          "datasource": { "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (node, le) (rate(ott_job_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{node}}"
+        },
+        {
+          "datasource": { "uid": "prometheus" },
+          "expr": "histogram_quantile(0.99, sum by (node, le) (rate(ott_job_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99 {{node}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+
+    {
+      "id": 5,
+      "title": "Durée ffmpeg par opération (p95)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [{
+        "datasource": { "uid": "prometheus" },
+        "expr": "histogram_quantile(0.95, sum by (node, operation, le) (rate(ott_ffmpeg_duration_seconds_bucket[5m])))",
+        "legendFormat": "{{node}} / {{operation}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+
+    {
+      "id": 6,
+      "title": "Opérations S3 (succès / erreur)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": { "uid": "prometheus" },
+          "expr": "rate(ott_s3_operations_total{status=\"success\"}[1m])",
+          "legendFormat": "✓ {{node}} {{operation}}"
+        },
+        {
+          "datasource": { "uid": "prometheus" },
+          "expr": "rate(ott_s3_operations_total{status=\"error\"}[1m])",
+          "legendFormat": "✗ {{node}} {{operation}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+
+    {
+      "id": 7,
+      "title": "Données uploadées vers S3 (octets/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [{
+        "datasource": { "uid": "prometheus" },
+        "expr": "rate(ott_s3_upload_bytes_total[1m])",
+        "legendFormat": "{{node}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "Bps" } }
+    },
+
+    {
+      "id": 8,
+      "title": "Latence HTTP /process (p95)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "targets": [{
+        "datasource": { "uid": "prometheus" },
+        "expr": "histogram_quantile(0.95, sum by (handler, le) (rate(http_request_duration_seconds_bucket{handler=\"/process\"}[5m])))",
+        "legendFormat": "{{handler}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+
+    {
+      "id": 9,
+      "title": "Checkpoints spot interruption",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 24, "w": 6, "h": 8 },
+      "targets": [{
+        "datasource": { "uid": "prometheus" },
+        "expr": "sum by (node) (ott_checkpoints_total)",
+        "legendFormat": "{{node}}"
+      }],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" },
+        "thresholds": { "steps": [
+          { "value": 0, "color": "green" },
+          { "value": 1, "color": "orange" }
+        ]}
+      }}
+    },
+
+    {
+      "id": 10,
+      "title": "Logs pipeline (Loki)",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 10 },
+      "targets": [{
+        "datasource": { "uid": "loki" },
+        "expr": "{pipeline=\"ott\"}",
+        "legendFormat": ""
+      }],
+      "options": { "showTime": true, "showLabels": true, "wrapLogMessage": true }
+    }
+
+  ]
+}

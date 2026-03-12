@@ -1,0 +1,31 @@
+[build-system]
+requires      = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name        = "processing-pipeline"
+version     = "1.0.0"
+description = "OTT video processing pipeline – distributed worker nodes"
+requires-python = ">=3.11"
+
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.7",
+    "aioboto3>=13",
+    "aiohttp>=3.9",
+    "prometheus-fastapi-instrumentator>=6.1",
+    "prometheus-client>=0.20",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "httpx"]
+
+[project.scripts]
+processing-ingest     = "processing_pipeline.ingest.app:main"
+processing-transcoder = "processing_pipeline.transcoder.app:main"
+processing-audio      = "processing_pipeline.audio.app:main"
+processing-packager   = "processing_pipeline.packager.app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

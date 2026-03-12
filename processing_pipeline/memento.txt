@@ -1,0 +1,8 @@
+MinIO sur :9000 (API S3) + :9001 (console web) pour émuler S3 en local
+minio_init crée le bucket au premier démarrage
+Redis sur :6379 joue le rôle d'orchestrateur
+Les 4 nœuds sur :8081→:8084, tous avec healthcheck sur /health et depends_on correct
+
+.env.example — à copier en .env avant de lancer :
+bashcp .env.example .env
+docker compose up --build
