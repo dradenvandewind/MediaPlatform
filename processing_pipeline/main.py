@@ -7,34 +7,7 @@ Entrypoints CLI – un fichier, quatre nœuds.
     python main.py packager
 """
 import sys
-import importlib
-import pkgutil
 import uvicorn
-
-
-def _find_package():
-    """
-    Retourne le nom du package racine, ou None si shared.app_factory est un top-level.
-    """
-    # Essai en top-level d'abord
-    try:
-        importlib.import_module("shared.app_factory")
-        return None  # Pas de package racine, les modules sont top-level
-    except ModuleNotFoundError:
-        pass
-
-    # Recherche d'un package contenant shared.app_factory
-    for pkg in pkgutil.iter_modules():
-        if pkg.ispkg:
-            try:
-                importlib.import_module(f"{pkg.name}.shared.app_factory")
-                return pkg.name
-            except ModuleNotFoundError:
-                continue
-    raise RuntimeError(
-        "Impossible de trouver le package pipeline. "
-        "Vérifiez que PYTHONPATH pointe vers la racine du projet."
-    )
 
 
 def main():
@@ -55,41 +28,23 @@ def main():
 
 
 def _ingest():
-    pkg = _find_package()
-    if pkg is None:
-        mod = importlib.import_module("ingest.app")
-    else:
-        mod = importlib.import_module(f"{pkg}.ingest.app")
-    return mod.create_ingest_app()
-
+    from processing_pipeline.ingest.app import create_ingest_app
+    return create_ingest_app()
 
 
 def _transcoder():
-    pkg = _find_package()
-    if pkg is None:
-        mod = importlib.import_module("transcoder.app")
-    else:
-        mod = importlib.import_module(f"{pkg}.transcoder.app")
-    return mod.create_transcoder_app()
+    from processing_pipeline.transcoder.app import create_transcoder_app
+    return create_transcoder_app()
 
 
 def _audio():
-    pkg = _find_package()
-    if pkg is None:
-        mod = importlib.import_module("audio.app")
-    else:
-        mod = importlib.import_module(f"{pkg}.audio.app")
-        
-    return mod.create_audio_app()
+    from processing_pipeline.audio.app import create_audio_app
+    return create_audio_app()
 
 
 def _packager():
-    pkg = _find_package()
-    if pkg is None:
-        mod = importlib.import_module("packager.app")
-    else:
-        mod = importlib.import_module(f"{pkg}.packager.app")
-    return mod.create_packager_app()
+    from processing_pipeline.packager.app import create_packager_app
+    return create_packager_app()
 
 
 if __name__ == "__main__":
