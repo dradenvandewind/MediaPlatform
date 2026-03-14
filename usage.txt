@@ -1,0 +1,5 @@
+docker compose down
+docker compose build --no-cache ingest transcoder audio packager
+docker compose up --force-recreate
+
+docker compose build --no-cache ingest orchestrator && docker compose up --force-recreate

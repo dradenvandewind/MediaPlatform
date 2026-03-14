@@ -1,0 +1,336 @@
+# ---------------------------------------------------------------------------
+# Réseau interne du pipeline
+# ---------------------------------------------------------------------------
+networks:
+  ott_net:
+    driver: bridge
+
+
+# ---------------------------------------------------------------------------
+# Volumes partagés
+# ---------------------------------------------------------------------------
+volumes:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  pg_data:
+  redis_data:
+
+# ---------------------------------------------------------------------------
+# Variables communes (surchargeables via .env)
+# ---------------------------------------------------------------------------
+x-common-env: &common-env
+  AWS_ACCESS_KEY_ID:     ${AWS_ACCESS_KEY_ID:-minioadmin}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+  AWS_REGION:            ${AWS_REGION:-eu-west-1}
+  S3_BUCKET:             ${S3_BUCKET:-ott-bucket}
+  ORCHESTRATOR_URL:      http://orchestrator:8000
+  REDIS_URL:          redis://redis:6379
+  MULTIPART_THRESHOLD:   "104857600"
+  CHUNK_SIZE:            "8388608"
+  MAX_RETRIES:           "3"
+  RETRY_DELAY:           "1.0"
+
+x-worker-labels: &worker-labels
+  labels:
+    pipeline: "ott"
+
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    networks:
+      - ott_net
+    container_name: postgres_orchestrator_media_platform
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ott
+      POSTGRES_PASSWORD: ott
+      POSTGRES_DB:       ott
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ott -d ott"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - ott_net
+    container_name: redis_orchestrator_media_platform
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  orchestrator:
+    build:
+      context: ./media-orchestrator
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: orchestrator
+    networks:
+      - ott_net
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      OTT_REDIS_URL:    redis://redis:6379
+      OTT_DATABASE_URL: postgresql+asyncpg://ott:ott@postgres:5432/ott
+      OTT_LOG_LEVEL:    debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── MinIO (émulation S3 locale) ──────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: ott_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${AWS_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+    ports:
+      - "9000:9000"    # API S3
+      - "9001:9001"    # Console web
+    volumes:
+      - minio_data:/data
+    networks:
+      - ott_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Création du bucket au démarrage ────────────────────────────────────
+  minio_init:
+    image: minio/mc:latest
+    container_name: ott_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 ${AWS_ACCESS_KEY_ID:-minioadmin} ${AWS_SECRET_ACCESS_KEY:-minioadmin};
+        mc mb --ignore-existing local/${S3_BUCKET:-ott-bucket};
+        echo 'bucket ready';
+      "
+    networks:
+      - ott_net
+
+  # ── Redis (bus d'événements / orchestrateur simplifié) ──────────────────
+  # orchestrator:
+  #   image: redis:7-alpine
+  #   container_name: ott_orchestrator
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - ott_net
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
+
+  # ── Workers ──────────────────────────────────────────────────────────────
+
+  ingest:
+    build:
+      context: processing_pipeline/
+      dockerfile: ingest/Dockerfile
+    container_name: ott_ingest
+    <<: *worker-labels
+    environment:
+      <<: *common-env
+      # Pointer vers MinIO en local
+      AWS_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "8081:8080"
+    depends_on:
+      minio_init:
+        condition: service_completed_successfully
+      orchestrator:
+        condition: service_healthy
+    networks:
+      - ott_net
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Transcoder ───────────────────────────────────────────────────────────
+  transcoder:
+    build:
+      context: processing_pipeline/
+      dockerfile: transcoder/Dockerfile
+    container_name: ott_transcoder
+    <<: *worker-labels
+    environment:
+      <<: *common-env
+      AWS_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "8082:8080"
+    depends_on:
+      minio_init:
+        condition: service_completed_successfully
+      orchestrator:
+        condition: service_healthy
+    networks:
+      - ott_net
+
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Audio ────────────────────────────────────────────────────────────────
+  audio:
+    build:
+      context: processing_pipeline/
+      dockerfile: audio/Dockerfile
+    container_name: ott_audio
+    <<: *worker-labels
+    environment:
+      <<: *common-env
+      AWS_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "8083:8080"
+    depends_on:
+      minio_init:
+        condition: service_completed_successfully
+      orchestrator:
+        condition: service_healthy
+    networks:
+      - ott_net
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Packager ─────────────────────────────────────────────────────────────
+  packager:
+    build:
+      context: processing_pipeline/
+      dockerfile: packager/Dockerfile
+    container_name: ott_packager
+    <<: *worker-labels
+    environment:
+      <<: *common-env
+      AWS_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "8084:8080"
+    depends_on:
+      minio_init:
+        condition: service_completed_successfully
+      orchestrator:
+        condition: service_healthy
+    networks:
+      - ott_net
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Monitoring ───────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: ott_prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./processing_pipeline/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - ott_net
+    depends_on:
+      - ingest
+      - transcoder
+      - audio
+      - packager
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: ott_loki
+    command: -config.file=/etc/loki/loki.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./processing_pipeline/monitoring/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    networks:
+      - ott_net
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: ott_promtail
+    command: -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - ./processing_pipeline/monitoring/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks:
+      - ott_net
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: ott_grafana
+    environment:
+      GF_SECURITY_ADMIN_USER:     ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP:     "false"
+      GF_FEATURE_TOGGLES_ENABLE:  "publicDashboards"
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./processing_pipeline/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./processing_pipeline/monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    networks:
+      - ott_net
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped      
+
+
