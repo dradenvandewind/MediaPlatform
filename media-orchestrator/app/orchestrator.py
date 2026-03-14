@@ -28,19 +28,38 @@ class JobNotFoundError(OrchestratorError):
 
 
 class MediaOrchestrator:
+    """
     PIPELINE_STAGES = [
         "ingest",
         "metadata-extraction",
         "media-processing",
-        "transcoding",
-        "audio-encoding",
+        "transcoder",
+        "audio",
         "subtitle-processing",
+        "packager"
         "watermarking",
         "drm-encryption",
         "muxing",
         "packaging",
         "completed",
     ]
+    """
+    PIPELINE_STAGES = [
+    "ingest",
+    "transcoder",   # ← was "metadata-extraction", "media-processing", "transcoding"
+    "audio",        # ← was "audio-encoding"
+    "packager",     # ← was "subtitle-processing", "watermarking", "drm-encryption", "muxing", "packaging"
+    "completed",
+    ]
+    
+   
+    
+    
+    
+    
+    
+    
+    
 
     STREAM_PREFIX = "jobs"
 
