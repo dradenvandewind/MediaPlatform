@@ -43,13 +43,37 @@ class BaseWorker(ABC):
     # ------------------------------------------------------------------ #
 
     async def publish(self, event: dict) -> None:
+        job_id = event.get("job_id")
+        if not job_id:
+            log.warning("publish: no job_id in event %s", event)
+            return
+
+        event_type = event.get("event", "")
+
+        if event_type.endswith(".completed"):
+            url  = f"{self.orchestrator_url}/jobs/{job_id}/next"
+            body = {
+                "stage":  self.node_type,
+                "result": event.get("result", {}),
+            }
+        elif event_type.endswith(".failed"):
+            url  = f"{self.orchestrator_url}/jobs/{job_id}/failed"
+            body = {
+                "stage": self.node_type,
+                "error": event.get("error", "Unknown error"),
+            }
+        else:
+            log.debug("publish: unhandled event type %s", event_type)
+            return
+
         async with aiohttp.ClientSession() as http:
             try:
-                await http.post(
-                    f"{self.orchestrator_url}/publish",
-                    json=event,
+                resp = await http.post(
+                    url,
+                    json=body,
                     timeout=aiohttp.ClientTimeout(total=5),
                 )
+                log.info("publish %s → %s (HTTP %s)", event_type, url, resp.status)
             except Exception as exc:
                 log.warning("publish failed (non-blocking): %s", exc)
 
@@ -72,3 +96,35 @@ class BaseWorker(ABC):
 
         Path(tmp_path).unlink(missing_ok=True)
         log.info("[%s] checkpoint saved for job %s", self.node_type, job_id)
+
+    async def consume(self) -> None:
+        """Lit en continu le stream Redis jobs:{node_type}"""
+        import redis.asyncio as aioredis
+        from processing_pipeline.shared.config import REDIS_URL
+
+        r = aioredis.from_url(REDIS_URL, decode_responses=True)
+        stream  = f"jobs:{self.node_type}"
+        group   = f"workers-{self.node_type}"
+        consumer = f"{self.node_type}-1"
+
+        # Créer le groupe si besoin
+        try:
+            await r.xgroup_create(stream, group, id="0", mkstream=True)
+        except Exception:
+            pass  # BUSYGROUP déjà existant
+
+        while True:
+            msgs = await r.xreadgroup(
+                group, consumer, {stream: ">"}, count=1, block=5000
+            )
+            if not msgs:
+                continue
+            for _, messages in msgs:
+                for msg_id, fields in messages:
+                    try:
+                        job_id   = fields["job_id"]
+                        job_data = json.loads(fields.get("input", "{}"))
+                        await self.run(job_id, job_data)
+                        await r.xack(stream, group, msg_id)
+                    except Exception as exc:
+                        log.error("consume error: %s", exc)

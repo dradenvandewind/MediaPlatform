@@ -2,6 +2,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    container_name: postgres_orchestrator_media_platform
     restart: unless-stopped
     environment:
       POSTGRES_USER:     ott
@@ -19,6 +20,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    container_name: redis_orchestrator_media_platform
     restart: unless-stopped
     ports:
       - "6380:6379"
@@ -35,13 +37,14 @@ services:
     build:
       context: .
       target: runtime
+    container_name: orchestrator
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       OTT_REDIS_URL:    redis://redis:6379
       OTT_DATABASE_URL: postgresql+asyncpg://ott:ott@postgres:5432/ott
-      OTT_LOG_LEVEL:    info
+      OTT_LOG_LEVEL:    debug
     depends_on:
       postgres:
         condition: service_healthy

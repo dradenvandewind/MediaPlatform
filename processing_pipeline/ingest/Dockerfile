@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
       "fastapi>=0.111" "uvicorn[standard]>=0.29" "pydantic>=2.7" \
       "aioboto3>=13" "aiohttp>=3.9" \
       "prometheus-fastapi-instrumentator>=6.1" "prometheus-client>=0.20" \
+      "redis>=5.0" \ 
       pytest pytest-asyncio httpx
 
 # Copie du code comme package processing_pipeline

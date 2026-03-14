@@ -36,7 +36,7 @@ RUN pip install --no-cache-dir cython setuptools
 COPY app/ ./app/
 COPY g_setup.py .
 
-# ✅ Une seule commande : génère ET compile
+
 RUN python g_setup.py build_ext --inplace \
     && find app/ -name "*.c" -delete \
     && find app/ -name "*.py" ! -name "__init__.py" -delete

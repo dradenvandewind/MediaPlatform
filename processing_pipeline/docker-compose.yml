@@ -6,6 +6,9 @@ version: "3.9"
 networks:
   ott_net:
     driver: bridge
+  media-orchestrator_default:
+    external: true
+
 
 # ---------------------------------------------------------------------------
 # Volumes partagés
@@ -74,18 +77,18 @@ services:
       - ott_net
 
   # ── Redis (bus d'événements / orchestrateur simplifié) ──────────────────
-  orchestrator:
-    image: redis:7-alpine
-    container_name: ott_orchestrator
-    ports:
-      - "6379:6379"
-    networks:
-      - ott_net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+  # orchestrator:
+  #   image: redis:7-alpine
+  #   container_name: ott_orchestrator
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - ott_net
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
 
   # ── Workers ──────────────────────────────────────────────────────────────
 
@@ -108,6 +111,7 @@ services:
         condition: service_healthy
     networks:
       - ott_net
+      - media_net
     restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -133,7 +137,8 @@ services:
       orchestrator:
         condition: service_healthy
     networks:
-      - ott_net
+      - ott_net- media_net
+
     restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -160,6 +165,7 @@ services:
         condition: service_healthy
     networks:
       - ott_net
+      - media_net
     restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -186,6 +192,7 @@ services:
         condition: service_healthy
     networks:
       - ott_net
+      - media_net
     restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -264,3 +271,4 @@ services:
       - prometheus
       - loki
     restart: unless-stopped
+

@@ -2,6 +2,7 @@
 app_factory – construit une FastAPI autour de n'importe quel BaseWorker.
 Routes communes : GET /health, POST /process, GET /metrics.
 """
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -47,7 +48,15 @@ def create_worker_app(worker: BaseWorker, **fastapi_kwargs) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         log.info("[%s] starting up", worker.node_type)
+        # ← lancer le consumer ici, dans l'event loop uvicorn
+        consumer_task = asyncio.create_task(worker.consume())
         yield
+        # ← arrêt propre
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
         log.info("[%s] shutting down", worker.node_type)
 
     app = FastAPI(lifespan=lifespan, **fastapi_kwargs)

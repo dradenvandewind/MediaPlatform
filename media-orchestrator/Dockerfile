@@ -63,7 +63,7 @@ ENV OTT_REDIS_URL=redis://redis:6379 \
     OTT_DATABASE_URL=postgresql+asyncpg://ott:ott@postgres:5432/ott \
     OTT_HOST=0.0.0.0 \
     OTT_PORT=8000 \
-    OTT_LOG_LEVEL=info \
+    OTT_LOG_LEVEL=debug \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
@@ -73,4 +73,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
-CMD ["sh", "-c", "uvicorn app.main:app --host $OTT_HOST --port $OTT_PORT --log-level $OTT_LOG_LEVEL"]
+#CMD ["sh", "-c", "uvicorn app.main:app --host $OTT_HOST --port $OTT_PORT --log-level $OTT_LOG_LEVEL"]
+CMD ["sh", "-c", "uvicorn app.main:app --host $OTT_HOST --port $OTT_PORT --log-level debug"]

@@ -6,3 +6,36 @@ Les 4 nœuds sur :8081→:8084, tous avec healthcheck sur /health et depends_on 
 .env.example — à copier en .env avant de lancer :
 bashcp .env.example .env
 docker compose up --build
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+S3
+http://127.0.0.1:9001/login
+
+minioadmin
+minioadmin
+
+
+http://127.0.0.1:9001/browser/ott-bucket
+
+promotheus
+http://127.0.0.1:9090/graph?g0.expr=&g0.tab=1&g0.display_mode=lines&g0.show_exemplars=0&g0.range_input=1h
+
+grafana
+http://localhost:3000/ 
+
+admin
+admin
+
+
