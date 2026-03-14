@@ -100,12 +100,8 @@ class BaseWorker(ABC):
     async def consume(self) -> None:
         import redis.asyncio as aioredis
         from processing_pipeline.shared.config import REDIS_URL
-
         log.info("[%s] consume() starting — REDIS_URL=%s", self.node_type, REDIS_URL)
-        
         r = aioredis.from_url(REDIS_URL, decode_responses=True)
-        
-        # Vérifier la connexion Redis au démarrage
         try:
             await r.ping()
             log.info("[%s] Redis connected OK", self.node_type)
@@ -116,7 +112,6 @@ class BaseWorker(ABC):
         stream   = f"jobs:{self.node_type}"
         group    = f"workers-{self.node_type}"
         consumer = f"{self.node_type}-1"
-
         log.info("[%s] listening on stream=%s group=%s", self.node_type, stream, group)
 
         try:
@@ -125,6 +120,47 @@ class BaseWorker(ABC):
         except Exception as exc:
             log.debug("[%s] group already exists: %s", self.node_type, exc)
 
+        # ── Pending messages : retraiter les messages non ACKés au démarrage ──
+        log.info("[%s] checking pending messages...", self.node_type)
+        try:
+            pending_msgs = await r.xreadgroup(
+                group, consumer, {stream: "0"}, count=10
+            )
+            if pending_msgs:
+                log.info("[%s] found pending messages to reprocess", self.node_type)
+                for _, messages in pending_msgs:
+                    for msg_id, fields in messages:
+                        job_id = fields.get("job_id", "unknown")
+                        log.info("[%s] reprocessing pending job=%s", self.node_type, job_id)
+                        try:
+                            job_data = json.loads(fields.get("input", "{}"))
+                            for k, v in fields.items():
+                                if k in ("job_id", "input", "current_stage"):
+                                    continue
+                                try:
+                                    job_data[k] = json.loads(v)
+                                except (json.JSONDecodeError, TypeError):
+                                    job_data[k] = v
+                            result = await self.run(job_id, job_data)
+                            await r.xack(stream, group, msg_id)
+                            log.info("[%s] pending job=%s completed", self.node_type, job_id)
+                            await self.publish({
+                                "event":  f"{self.node_type}.completed",
+                                "job_id": job_id,
+                                "result": result,
+                            })
+                        except Exception as exc:
+                            log.error("[%s] pending job=%s FAILED: %s", self.node_type, job_id, exc)
+                            await r.xack(stream, group, msg_id)
+                            await self.publish({
+                                "event":  f"{self.node_type}.failed",
+                                "job_id": job_id,
+                                "error":  str(exc),
+                            })
+        except Exception as exc:
+            log.warning("[%s] could not read pending messages: %s", self.node_type, exc)
+
+        # ── Boucle principale : nouveaux messages ────────────────────────────
         while True:
             try:
                 msgs = await r.xreadgroup(
@@ -133,13 +169,19 @@ class BaseWorker(ABC):
                 if not msgs:
                     log.debug("[%s] no messages (timeout 5s), retrying...", self.node_type)
                     continue
-
                 for _, messages in msgs:
                     for msg_id, fields in messages:
                         job_id = fields.get("job_id", "unknown")
                         log.info("[%s] received job=%s msg_id=%s", self.node_type, job_id, msg_id)
                         try:
                             job_data = json.loads(fields.get("input", "{}"))
+                            for k, v in fields.items():
+                                if k in ("job_id", "input", "current_stage"):
+                                    continue
+                                try:
+                                    job_data[k] = json.loads(v)
+                                except (json.JSONDecodeError, TypeError):
+                                    job_data[k] = v
                             log.debug("[%s] job=%s data=%s", self.node_type, job_id, job_data)
                             result = await self.run(job_id, job_data)
                             await r.xack(stream, group, msg_id)
