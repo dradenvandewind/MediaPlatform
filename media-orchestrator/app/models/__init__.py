@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 class JobSubmitRequest(BaseModel):
     video_url: str
+    title:       str = "untitled"
     resolutions: List[str] = ["1080p", "720p", "480p"]
     audio_tracks: List[str] = ["en"]
     subtitles: List[str] = []

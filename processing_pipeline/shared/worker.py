@@ -98,33 +98,67 @@ class BaseWorker(ABC):
         log.info("[%s] checkpoint saved for job %s", self.node_type, job_id)
 
     async def consume(self) -> None:
-        """Lit en continu le stream Redis jobs:{node_type}"""
         import redis.asyncio as aioredis
         from processing_pipeline.shared.config import REDIS_URL
 
+        log.info("[%s] consume() starting — REDIS_URL=%s", self.node_type, REDIS_URL)
+        
         r = aioredis.from_url(REDIS_URL, decode_responses=True)
-        stream  = f"jobs:{self.node_type}"
-        group   = f"workers-{self.node_type}"
+        
+        # Vérifier la connexion Redis au démarrage
+        try:
+            await r.ping()
+            log.info("[%s] Redis connected OK", self.node_type)
+        except Exception as exc:
+            log.error("[%s] Redis connection FAILED: %s", self.node_type, exc)
+            raise
+
+        stream   = f"jobs:{self.node_type}"
+        group    = f"workers-{self.node_type}"
         consumer = f"{self.node_type}-1"
 
-        # Créer le groupe si besoin
+        log.info("[%s] listening on stream=%s group=%s", self.node_type, stream, group)
+
         try:
             await r.xgroup_create(stream, group, id="0", mkstream=True)
-        except Exception:
-            pass  # BUSYGROUP déjà existant
+            log.info("[%s] consumer group created", self.node_type)
+        except Exception as exc:
+            log.debug("[%s] group already exists: %s", self.node_type, exc)
 
         while True:
-            msgs = await r.xreadgroup(
-                group, consumer, {stream: ">"}, count=1, block=5000
-            )
-            if not msgs:
-                continue
-            for _, messages in msgs:
-                for msg_id, fields in messages:
-                    try:
-                        job_id   = fields["job_id"]
-                        job_data = json.loads(fields.get("input", "{}"))
-                        await self.run(job_id, job_data)
-                        await r.xack(stream, group, msg_id)
-                    except Exception as exc:
-                        log.error("consume error: %s", exc)
+            try:
+                msgs = await r.xreadgroup(
+                    group, consumer, {stream: ">"}, count=1, block=5000
+                )
+                if not msgs:
+                    log.debug("[%s] no messages (timeout 5s), retrying...", self.node_type)
+                    continue
+
+                for _, messages in msgs:
+                    for msg_id, fields in messages:
+                        job_id = fields.get("job_id", "unknown")
+                        log.info("[%s] received job=%s msg_id=%s", self.node_type, job_id, msg_id)
+                        try:
+                            job_data = json.loads(fields.get("input", "{}"))
+                            log.debug("[%s] job=%s data=%s", self.node_type, job_id, job_data)
+                            result = await self.run(job_id, job_data)
+                            await r.xack(stream, group, msg_id)
+                            log.info("[%s] job=%s completed, ACK sent", self.node_type, job_id)
+                            await self.publish({
+                                "event":  f"{self.node_type}.completed",
+                                "job_id": job_id,
+                                "result": result,
+                            })
+                        except Exception as exc:
+                            log.error("[%s] job=%s FAILED: %s", self.node_type, job_id, exc, exc_info=True)
+                            await self.publish({
+                                "event":  f"{self.node_type}.failed",
+                                "job_id": job_id,
+                                "error":  str(exc),
+                            })
+            except asyncio.CancelledError:
+                log.info("[%s] consume() cancelled, shutting down", self.node_type)
+                raise
+            except Exception as exc:
+                log.error("[%s] consume() loop error: %s — retrying in 2s", self.node_type, exc)
+                await asyncio.sleep(2)

@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 class AudioWorker(BaseWorker):
     def __init__(self, **kwargs):
-        super().__init__(node_type="audio", **kwargs)
+        super().__init__(node_type="audio-encoding", **kwargs)
 
     async def run(self, job_id: str, job_data: dict) -> dict:
         video_keys = job_data["transcoded_videos"]

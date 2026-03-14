@@ -70,12 +70,18 @@ class IngestWorker(BaseWorker):
     # ------------------------------------------------------------------ #
 
     async def _download_url(self, url: str, dest: str) -> None:
+        downloaded = 0
         async with aiohttp.ClientSession() as http:
             async with http.get(url) as resp:
                 resp.raise_for_status()
+                total = int(resp.headers.get("Content-Length", 0))
                 with open(dest, "wb") as fh:
                     async for chunk in resp.content.iter_chunked(CHUNK_SIZE):
                         fh.write(chunk)
+                        downloaded += len(chunk)
+                        if total:
+                            pct = downloaded * 100 // total
+                            log.info("downloading... %d%% (%d MB)", pct, downloaded // 1024 // 1024)
         log.info("downloaded %s → %s", url, dest)
 
     async def _probe(self, path: str) -> dict:

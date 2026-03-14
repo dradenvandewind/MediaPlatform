@@ -26,3 +26,27 @@ docker compose down -v
 docker compose -f docker-compose-prod.yml up
 
 
+https://download.blender.org/peach/bigbuckbunny_movies/
+
+https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4
+
+https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_1080p_h264.mov
+
+
+curl -X POST http://localhost:8081/process   -H "Content-Type: application/json"   -d '{   
+    "job_id": "job-test-001",
+    "payload": {
+      "source_url": "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_1080p_h264.mov",
+      "title": "Big Buck Bunny",
+      "profiles": ["1080p", "720p", "480p"]
+    }
+  }'
+
+curl -X POST http://localhost:8081/process   -H "Content-Type: application/json"   -d '{   
+    "job_id": "job-test-001",
+    "payload": {
+      "source_url": "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4",
+      "title": "Big Buck Bunny",
+      "profiles": ["1080p", "720p", "480p"]
+    }
+  }'

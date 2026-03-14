@@ -23,7 +23,7 @@ services:
     container_name: redis_orchestrator_media_platform
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes

@@ -27,7 +27,8 @@ x-common-env: &common-env
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
   AWS_REGION:            ${AWS_REGION:-eu-west-1}
   S3_BUCKET:             ${S3_BUCKET:-ott-bucket}
-  ORCHESTRATOR_URL:      http://orchestrator:6379
+  ORCHESTRATOR_URL:      http://orchestrator:8000
+  #REDIS_URL: redis://redis:6379 
   MULTIPART_THRESHOLD:   "104857600"
   CHUNK_SIZE:            "8388608"
   MAX_RETRIES:           "3"
@@ -107,11 +108,11 @@ services:
     depends_on:
       minio_init:
         condition: service_completed_successfully
-      orchestrator:
-        condition: service_healthy
+      #orchestrator:
+     #   condition: service_healthy
     networks:
       - ott_net
-      - media_net
+      - media-orchestrator_default
     restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -134,10 +135,11 @@ services:
     depends_on:
       minio_init:
         condition: service_completed_successfully
-      orchestrator:
-        condition: service_healthy
+      #orchestrator:
+      #  condition: service_healthy
     networks:
-      - ott_net- media_net
+      - ott_net
+      - media-orchestrator_default
 
     restart: on-failure
     healthcheck:
@@ -161,11 +163,11 @@ services:
     depends_on:
       minio_init:
         condition: service_completed_successfully
-      orchestrator:
-        condition: service_healthy
+      #orchestrator:
+      #  condition: service_healthy
     networks:
       - ott_net
-      - media_net
+      - media-orchestrator_default
     restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -188,11 +190,11 @@ services:
     depends_on:
       minio_init:
         condition: service_completed_successfully
-      orchestrator:
-        condition: service_healthy
+      #orchestrator:
+      #  condition: service_healthy
     networks:
       - ott_net
-      - media_net
+      - media-orchestrator_default
     restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
