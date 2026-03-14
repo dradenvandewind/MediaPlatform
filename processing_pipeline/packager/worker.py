@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 class PackagerWorker(BaseWorker):
     def __init__(self, **kwargs):
-        super().__init__(node_type="packaging", **kwargs)
+        super().__init__(node_type="packager", **kwargs)
 
     async def run(self, job_id: str, job_data: dict) -> dict:
         muxed_files = job_data["muxed_files"]

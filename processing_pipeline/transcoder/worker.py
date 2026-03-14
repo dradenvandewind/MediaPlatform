@@ -16,7 +16,7 @@ FFMPEG_CONFIGS: dict[str, str] = {
 
 class TranscoderWorker(BaseWorker):
     def __init__(self, **kwargs):
-        super().__init__(node_type="transcoding", **kwargs)
+        super().__init__(node_type="transcoder", **kwargs)
 
     async def run(self, job_id: str, job_data: dict) -> dict:
         s3_key   = job_data["s3_key"]

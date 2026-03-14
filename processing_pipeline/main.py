@@ -26,7 +26,7 @@ def main():
     app, worker = nodes[node]()
 
     async def start():
-        asyncio.create_task(worker.consume())  # ← event loop actif ici
+        #asyncio.create_task(worker.consume())  # ← event loop actif ici
         config = uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="debug")
         server = uvicorn.Server(config)
         await server.serve()
