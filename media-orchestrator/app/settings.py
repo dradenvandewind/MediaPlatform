@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://ott:ott@localhost:5432/ott"
     host:         str = "0.0.0.0"
     port:         int = 8000
-    log_level:    str = "info"
+    log_level:    str = "debug"
 
     model_config = SettingsConfigDict(
         env_prefix="OTT_",

@@ -4,6 +4,8 @@ Entrypoints CLI – un fichier, quatre nœuds.
     python main.py transcoder
     python main.py audio
     python main.py packager
+    python main.py vmaf
+    python main.py live_moq
 """
 import asyncio
 import sys
@@ -16,6 +18,7 @@ def main():
         "transcoder": _transcoder,
         "audio":      _audio,
         "packager":   _packager,
+         "vmaf":       _vmaf,
     }
 
     node = sys.argv[1] if len(sys.argv) > 1 else "ingest"
@@ -61,6 +64,17 @@ def _packager():
     worker = PackagerWorker()
     return create_packager_app(worker), worker  # ← worker passé
 
+def _vmaf():
+    from processing_pipeline.vmaf.app import create_vmaf_app
+    from processing_pipeline.vmaf.worker import VmafWorker
+    worker = VmafWorker()
+    return create_vmaf_app(worker), worker  # ← worker passé    
+
+def _live_ingest():
+    from processing_pipeline.live_moq.app import create_live_ingest_app
+    from processing_pipeline.live_moq.worker import LiveIngestWorker
+    worker = LiveIngestWorker()
+    return create_live_ingest_app(worker), worker
 
 if __name__ == "__main__":
     main()

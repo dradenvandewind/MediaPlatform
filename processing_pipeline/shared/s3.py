@@ -29,9 +29,14 @@ class S3Manager:
         self._client = None
 
     async def __aenter__(self) -> "S3Manager":
+        import os
         self._session = aioboto3.Session()
-        self._ctx     = self._session.client("s3", region_name=self.region)
-        self._s3      = await self._ctx.__aenter__()
+        kwargs = {"region_name": self.region}
+        endpoint = os.getenv("AWS_ENDPOINT_URL")
+        if endpoint:
+            kwargs["endpoint_url"] = endpoint
+        self._ctx = self._session.client("s3", **kwargs)
+        self._s3  = await self._ctx.__aenter__()
         return self
 
     async def __aexit__(self, *exc_info) -> None:

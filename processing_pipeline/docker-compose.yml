@@ -119,6 +119,30 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  vmaf:
+    build:
+      context: ./processing_pipeline
+      dockerfile: vmaf/Dockerfile
+    container_name: ott_vmaf
+    <<: *worker-labels
+    environment:
+      <<: *common-env
+      AWS_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "8085:8080"
+    depends_on:
+      minio_init:
+        condition: service_completed_successfully
+      orchestrator:
+        condition: service_healthy
+    networks:
+      - ott_net
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ── Transcoder ───────────────────────────────────────────────────────────
   transcoder:
