@@ -75,9 +75,9 @@ class PackagerWorker(BaseWorker):
 
                 log.info("downloaded video=%s audio=%s", local_video, local_audio)
 
-                results["hls"].append(await self._hls(local_video, local_audio, s3))
-                results["dash"].append(await self._dash(local_video, local_audio, s3))
-                results["cmaf"].append(await self._cmaf(local_video, local_audio, s3))
+                results["hls"].append(await self._hls(local_video, local_audio, s3, job_id))
+                results["dash"].append(await self._dash(local_video, local_audio, s3, job_id))
+                results["cmaf"].append(await self._cmaf(local_video, local_audio, s3, job_id))
 
                 for local_path in filter(None, [local_video, local_audio]):
                     try:
@@ -99,7 +99,7 @@ class PackagerWorker(BaseWorker):
         if proc.returncode != 0:
             raise RuntimeError(stderr.decode())
 
-    async def _hls(self, video_path: str, audio_path: str | None, s3: S3Manager) -> str:
+    async def _hls(self, video_path: str, audio_path: str | None, s3: S3Manager, job_id: str) -> str:
         stem = Path(video_path).stem
         out  = Path(f"/tmp/hls_{stem}")
         out.mkdir(exist_ok=True)
@@ -109,10 +109,10 @@ class PackagerWorker(BaseWorker):
         if audio_path:
             inputs += f"-i {audio_path} "
             maps   += "-map 1:a:0 "
-            maps   += "-bsf:a aac_adtstoasc " 
+            maps   += "-bsf:a aac_adtstoasc "
         else:
             maps += "-map 0:a:0 "
-            maps   += "-bsf:a aac_adtstoasc "
+            maps += "-bsf:a aac_adtstoasc "
 
         await self._run_cmd(
             f"ffmpeg -y {inputs}"
@@ -126,12 +126,12 @@ class PackagerWorker(BaseWorker):
             f"{out}/playlist.m3u8"
         )
         for f in out.glob("*"):
-            await s3.upload(str(f), f"hls/{stem}/{f.name}")
-        log.info("HLS fMP4 packaged → hls/%s/playlist.m3u8", stem)
-        return f"hls/{stem}/playlist.m3u8"
+            await s3.upload(str(f), f"{job_id}/hls/{stem}/{f.name}")
+        log.info("HLS fMP4 packaged → %s/hls/%s/playlist.m3u8", job_id, stem)
+        return f"{job_id}/hls/{stem}/playlist.m3u8"
 
 
-    async def _dash(self, video_path: str, audio_path: str | None, s3: S3Manager) -> str:
+    async def _dash(self, video_path: str, audio_path: str | None, s3: S3Manager, job_id: str) -> str:
         stem = Path(video_path).stem
         out  = Path(f"/tmp/dash_{stem}")
         out.mkdir(exist_ok=True)
@@ -153,12 +153,12 @@ class PackagerWorker(BaseWorker):
             f"{out}/manifest.mpd"
         )
         for f in out.glob("*"):
-            await s3.upload(str(f), f"dash/{stem}/{f.name}")
-        log.info("DASH packaged → dash/%s/manifest.mpd", stem)
-        return f"dash/{stem}/manifest.mpd"
+            await s3.upload(str(f), f"{job_id}/dash/{stem}/{f.name}")
+        log.info("DASH packaged → %s/dash/%s/manifest.mpd", job_id, stem)
+        return f"{job_id}/dash/{stem}/manifest.mpd"
 
 
-    async def _cmaf(self, video_path: str, audio_path: str | None, s3: S3Manager) -> str:
+    async def _cmaf(self, video_path: str, audio_path: str | None, s3: S3Manager, job_id: str) -> str:
         stem = Path(video_path).stem
         out  = Path(f"/tmp/cmaf_{stem}")
         out.mkdir(exist_ok=True)
@@ -182,9 +182,9 @@ class PackagerWorker(BaseWorker):
             f"{out}/manifest.mpd"
         )
         for f in out.glob("*"):
-            await s3.upload(str(f), f"cmaf/{stem}/{f.name}")
-        log.info("CMAF packaged → cmaf/%s/manifest.mpd", stem)
-        return f"cmaf/{stem}/manifest.mpd"
+            await s3.upload(str(f), f"{job_id}/cmaf/{stem}/{f.name}")
+        log.info("CMAF packaged → %s/cmaf/%s/manifest.mpd", job_id, stem)
+        return f"{job_id}/cmaf/{stem}/manifest.mpd"
         
     async def _package_all(self, video_path: str, audio_path: str, s3: S3Manager, job_id: str) -> dict:
         stem = Path(video_path).stem
