@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+</head>
+<body>
+    <h1>Local OTT player</h1>
+    <video id="videoPlayer" controls width="800"></video>
+
+    <script>
+        (function(){
+            var url = "http://localhost:8080/ott-bucket/job-eb80c1c34842/dash/1080p/manifest.mpd";
+            var player = dashjs.MediaPlayer().create();
+            player.initialize(document.querySelector("#videoPlayer"), url, true);
+        })();
+    </script>
+</body>
+</html>

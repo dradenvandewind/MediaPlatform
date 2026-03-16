@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>OTT Multi-View Configurable</title>
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+    <style>
+        .controls { margin-bottom: 20px; padding: 10px; background: #f4f4f4; }
+        .multi-view-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            max-width: 1400px;
+            margin: auto;
+        }
+        .video-box { aspect-ratio: 1 / 1; background: #000; border: 2px solid #333; overflow: hidden; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <input type="text" id="streamUrl" placeholder="URL du manifeste .mpd" style="width: 300px;">
+        <button onclick="addStream()">Ajouter le flux</button>
+    </div>
+
+    <div class="multi-view-container" id="container"></div>
+
+    <script>
+        const container = document.getElementById('container');
+        let masterVideo = null;
+        let slaveVideos = [];
+
+        function addStream() {
+            const url = document.getElementById('streamUrl').value;
+            if (!url) return;
+
+            // Création des éléments DOM
+            const box = document.createElement('div');
+            box.className = 'video-box';
+            const video = document.createElement('video');
+            video.controls = true;
+            video.muted = true;
+            box.appendChild(video);
+            container.appendChild(box);
+
+            // Initialisation du player DASH
+            const player = dashjs.MediaPlayer().create();
+            player.initialize(video, url, true);
+
+            // Logique de rôle (Premier = Master, autres = Slaves)
+            if (!masterVideo) {
+                masterVideo = video;
+                video.style.border = "4px solid gold"; // Master identifié visuellement
+            } else {
+                slaveVideos.push(video);
+            }
+            
+            document.getElementById('streamUrl').value = ''; // Reset champ
+        }
+
+        // Logique de synchronisation (Master vers Slaves)
+        // Utilisation de l'intervalle pour éviter la surcharge processeur
+        setInterval(() => {
+            if (masterVideo && slaveVideos.length > 0) {
+                slaveVideos.forEach(slave => {
+                    if (Math.abs(masterVideo.currentTime - slave.currentTime) > 0.2) {
+                        slave.currentTime = masterVideo.currentTime;
+                    }
+                });
+            }
+        }, 500); // Check toutes les 500ms
+
+        // Contrôles synchronisés (événements)
+        document.addEventListener('play', (e) => {
+            if (e.target === masterVideo) slaveVideos.forEach(s => s.play());
+        }, true);
+        
+        document.addEventListener('pause', (e) => {
+            if (e.target === masterVideo) slaveVideos.forEach(s => s.pause());
+        }, true);
+    </script>
+</body>
+</html>

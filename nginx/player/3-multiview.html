@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>OTT Triple-View Mire Carrée</title>
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+    <style>
+        .multi-view-container {
+            display: grid;
+            /* 3 colonnes égales pour une mire carrée */
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 15px;
+            max-width: 1200px;
+            margin: auto;
+            padding: 20px;
+        }
+        .video-box {
+            /* Force le ratio 1:1 pour chaque cellule */
+            aspect-ratio: 1 / 1; 
+            background: #000;
+            border: 4px solid #333;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .video-box video { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; /* Remplit tout le carré */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="multi-view-container">
+        <div class="video-box"><video id="videoMaster" controls muted></video></div>
+        <div class="video-box"><video id="slave1" controls muted></video></div>
+        <div class="video-box"><video id="slave2" controls muted></video></div>
+    </div>
+
+    <script>
+        const masterVid = document.getElementById("videoMaster");
+        const slaveVids = [document.getElementById("slave1"), document.getElementById("slave2")];
+        
+        const playerMaster = dashjs.MediaPlayer().create();
+        const playersSlaves = [dashjs.MediaPlayer().create(), dashjs.MediaPlayer().create()];
+
+        // Initialisation
+        playerMaster.initialize(masterVid, "http://localhost:8080/ott-bucket/job-eb80c1c34842/dash/1080p/manifest.mpd", true);
+        playersSlaves[0].initialize(slaveVids[0], "http://localhost:8080/ott-bucket/job-eb80c1c34842/dash/720p/manifest.mpd", true);
+        playersSlaves[1].initialize(slaveVids[1], "http://localhost:8080/ott-bucket/job-eb80c1c34842/dash/480p/manifest.mpd", true);
+
+        // LOGIQUE DE SYNCHRO
+        masterVid.addEventListener('timeupdate', () => {
+            slaveVids.forEach(slave => {
+                // Tolérance de 100ms pour éviter la surcharge processeur
+                if (Math.abs(masterVid.currentTime - slave.currentTime) > 0.1) {
+                    slave.currentTime = masterVid.currentTime;
+                }
+            });
+        });
+
+        // Contrôles synchronisés
+        masterVid.onplay = () => slaveVids.forEach(s => s.play());
+        masterVid.onpause = () => slaveVids.forEach(s => s.pause());
+        masterVid.onseeking = () => slaveVids.forEach(s => s.currentTime = masterVid.currentTime);
+    </script>
+</body>
+</html>

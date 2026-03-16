@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>OTT Multi-View Sync</title>
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+    <style>
+        .multi-view-container {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 15px;
+            max-width: 1200px;
+            margin: auto;
+        }
+        .video-box video { width: 100%; background: #000; border: 2px solid #333; }
+        .master-label { color: gold; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="multi-view-container">
+        <div class="video-box">
+            <p class="master-label">MASTER (Controller)</p>
+            <video id="videoMaster" controls muted></video>
+        </div>
+        
+        <div class="video-box">
+            <p>SLAVE (Synchronized)</p>
+            <video id="videoSlave" controls muted></video>
+        </div>
+    </div>
+
+    <script>
+        const masterVideo = document.getElementById("videoMaster");
+        const slaveVideo = document.getElementById("videoSlave");
+
+        // Initialisation des players
+        const playerMaster = dashjs.MediaPlayer().create();
+        const playerSlave = dashjs.MediaPlayer().create();
+
+        playerMaster.initialize(masterVideo, "http://localhost:8080/ott-bucket/job-eb80c1c34842/dash/1080p/manifest.mpd", true);
+        playerSlave.initialize(slaveVideo, "http://localhost:8080/ott-bucket/job-eb80c1c34842/dash/720p/manifest.mpd", true);
+
+        // LOGIQUE DE SYNCHRONISATION
+        masterVideo.addEventListener('timeupdate', () => {
+            // Tolérance de 100ms
+            if (Math.abs(masterVideo.currentTime - slaveVideo.currentTime) > 0.1) {
+                slaveVideo.currentTime = masterVideo.currentTime;
+            }
+        });
+
+        // Contrôles synchronisés (Play/Pause)
+        masterVideo.onplay = () => slaveVideo.play();
+        masterVideo.onpause = () => slaveVideo.pause();
+        
+        // Gestion de la recherche (Seek)
+        masterVideo.onseeking = () => {
+            slaveVideo.currentTime = masterVideo.currentTime;
+        };
+    </script>
+</body>
+</html>
