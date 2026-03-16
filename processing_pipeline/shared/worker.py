@@ -97,6 +97,38 @@ class BaseWorker(ABC):
         Path(tmp_path).unlink(missing_ok=True)
         log.info("[%s] checkpoint saved for job %s", self.node_type, job_id)
 
+    def _build_job_data(self, fields: dict) -> dict:
+        """Reconstruit job_data en fusionnant input + previous_results + champs directs."""
+        job_data = json.loads(fields.get("input", "{}"))
+
+        # ── Fusionner previous_results ──────────────────────────────────────
+        prev_raw = fields.get("previous_results")
+        if prev_raw:
+            try:
+                previous_results = json.loads(prev_raw)
+                log.info("[%s] previous_results stages: %s", self.node_type, list(previous_results.keys()))
+                # Aplatir chaque résultat d'étape dans job_data
+                for stage, stage_result in previous_results.items():
+                    if isinstance(stage_result, dict):
+                        for key, value in stage_result.items():
+                            job_data[key] = value
+                            log.debug("[%s] injected from stage '%s': %s", self.node_type, stage, key)
+            except Exception as exc:
+                log.warning("[%s] could not parse previous_results: %s", self.node_type, exc)
+
+        # ── Ajouter les champs directs du stream ────────────────────────────
+        skip = {"job_id", "input", "current_stage", "previous_results"}
+        for k, v in fields.items():
+            if k in skip:
+                continue
+            try:
+                job_data[k] = json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                job_data[k] = v
+
+        log.info("[%s] job_data keys after merge: %s", self.node_type, list(job_data.keys()))
+        return job_data
+
     async def consume(self) -> None:
         import redis.asyncio as aioredis
         from processing_pipeline.shared.config import REDIS_URL
@@ -141,7 +173,10 @@ class BaseWorker(ABC):
                                     job_data[k] = json.loads(v)
                                 except (json.JSONDecodeError, TypeError):
                                     job_data[k] = v
-                            result = await self.run(job_id, job_data)
+                                    
+                            job_data = self._build_job_data(fields)
+                            
+                            result = await self.run(job_id, self._build_job_data(fields))
                             await r.xack(stream, group, msg_id)
                             log.info("[%s] pending job=%s completed", self.node_type, job_id)
                             await self.publish({
@@ -183,7 +218,7 @@ class BaseWorker(ABC):
                                 except (json.JSONDecodeError, TypeError):
                                     job_data[k] = v
                             log.debug("[%s] job=%s data=%s", self.node_type, job_id, job_data)
-                            result = await self.run(job_id, job_data)
+                            result = await self.run(job_id, self._build_job_data(fields))
                             await r.xack(stream, group, msg_id)
                             log.info("[%s] job=%s completed, ACK sent", self.node_type, job_id)
                             await self.publish({

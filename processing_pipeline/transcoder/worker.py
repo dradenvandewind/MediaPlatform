@@ -8,41 +8,39 @@ import re
 log = logging.getLogger(__name__)
 #todo  extract fps to inject it
 FFMPEG_CONFIGS: dict[str, str] = {
-    "1080p": "-vf scale=-2:1080 -c:v libx264 -preset medium -profile:v high -level 4.2 -b:v 5800k -maxrate 6200k -bufsize 8700k -g 48 -keyint_min 48 -sc_threshold 0 -an",
+    "1080p": "-vf scale=-2:1080 -c:v libx264 -preset medium -profile:v high -level 4.2 -b:v 5800k -maxrate 6200k -bufsize 8700k -x264-params aud=1 -movflags -g 48 -keyint_min 48 -sc_threshold 0 -an",
 
-    "720p":  "-vf scale=-2:720  -c:v libx264 -preset medium -profile:v high -level 4.0 -b:v 3000k -maxrate 3200k -bufsize 4500k -g 48 -keyint_min 48 -sc_threshold 0 -an",
+    "720p":  "-vf scale=-2:720  -c:v libx264 -preset medium -profile:v high -level 4.0 -b:v 3000k -maxrate 3200k -bufsize 4500k -x264-params aud=1 -movflags -g 48 -keyint_min 48 -sc_threshold 0 -an",
 
-    "540p":  "-vf scale=-2:540  -c:v libx264 -preset medium -profile:v main -level 3.2 -b:v 1800k -maxrate 1900k -bufsize 2700k -g 48 -keyint_min 48 -sc_threshold 0 -an",
+    "540p":  "-vf scale=-2:540  -c:v libx264 -preset medium -profile:v main -level 3.2 -b:v 1800k -maxrate 1900k -bufsize 2700k -x264-params aud=1 -movflags -g 48 -keyint_min 48 -sc_threshold 0 -an",
 
-    "480p":  "-vf scale=-2:480  -c:v libx264 -preset medium -profile:v main -level 3.1 -b:v 1200k -maxrate 1300k -bufsize 1800k -g 48 -keyint_min 48 -sc_threshold 0 -an",
+    "480p":  "-vf scale=-2:480  -c:v libx264 -preset medium -profile:v main -level 3.1 -b:v 1200k -maxrate 1300k -bufsize 1800k -x264-params aud=1 -movflags -g 48 -keyint_min 48 -sc_threshold 0 -an",
 
-    "360p":  "-vf scale=-2:360  -c:v libx264 -preset medium -profile:v main -level 3.0 -b:v 800k  -maxrate 856k  -bufsize 1200k -g 48 -keyint_min 48 -sc_threshold 0 -an",
+    "360p":  "-vf scale=-2:360  -c:v libx264 -preset medium -profile:v main -level 3.0 -b:v 800k  -maxrate 856k  -bufsize 1200k -x264-params aud=1 -movflags -g 48 -keyint_min 48 -sc_threshold 0 -an",
 
-    "240p":  "-vf scale=-2:240  -c:v libx264 -preset medium -profile:v baseline -level 3.0 -b:v 400k -maxrate 428k -bufsize 600k -g 48 -keyint_min 48 -sc_threshold 0 -an",
+    "240p":  "-vf scale=-2:240  -c:v libx264 -preset medium -profile:v baseline -level 3.0 -b:v 400k -maxrate 428k -bufsize 600k -x264-params aud=1 -movflags -g 48 -keyint_min 48 -sc_threshold 0 -an",
     
-    "hevc_2160p": "-vf scale=-2:2160 -c:v libx265 -preset medium -x265-params profile=main10:level=5.1 -b:v 16000k -maxrate 17000k -bufsize 24000k -g 48 -keyint_min 48",
+    "hevc_2160p": "-vf scale=-2:2160 -c:v libx265 -preset medium -x265-params profile=main10:level=5.1 -b:v 16000k -maxrate 17000k -bufsize 24000k -x265-params aud=1 -movflags -g 48 -keyint_min 48",
 
-    "hevc_1440p": "-vf scale=-2:1440 -c:v libx265 -preset medium -x265-params profile=main10 -b:v 10000k -maxrate 10500k -bufsize 15000k -g 48 -keyint_min 48",
+    "hevc_1440p": "-vf scale=-2:1440 -c:v libx265 -preset medium -x265-params profile=main10 -b:v 10000k -maxrate 10500k -bufsize 15000k -x265-params aud=1 -movflags -g 48 -keyint_min 48",
 
-    "hevc_1080p": "-vf scale=-2:1080 -c:v libx265 -preset medium -x265-params profile=main -b:v 6000k -maxrate 6300k -bufsize 9000k -g 48 -keyint_min 48",
+    "hevc_1080p": "-vf scale=-2:1080 -c:v libx265 -preset medium -x265-params profile=main -b:v 6000k -maxrate 6300k -bufsize 9000k -x265-params aud=1 -movflags -g 48 -keyint_min 48",
 
-    "hevc_720p": "-vf scale=-2:720 -c:v libx265 -preset medium -b:v 3500k -maxrate 3700k -bufsize 5250k -g 48 -keyint_min 48",
+    "hevc_540p": "-vf scale=-2:540 -c:v libx265 -preset medium -b:v 2000k -maxrate 2100k -bufsize 3000k -x265-params aud=1 -movflags -g 48 -keyint_min 48",
 
-    "hevc_540p": "-vf scale=-2:540 -c:v libx265 -preset medium -b:v 2000k -maxrate 2100k -bufsize 3000k -g 48 -keyint_min 48",
+    "hevc_480p": "-vf scale=-2:480 -c:v libx265 -preset medium -b:v 1300k -maxrate 1400k -bufsize 1950k -x265-params aud=1 -movflags -g 48 -keyint_min 48",
 
-    "hevc_480p": "-vf scale=-2:480 -c:v libx265 -preset medium -b:v 1300k -maxrate 1400k -bufsize 1950k -g 48 -keyint_min 48",
-
-    "hevc_360p": "-vf scale=-2:360 -c:v libx265 -preset medium -b:v 850k -maxrate 900k -bufsize 1275k -g 48 -keyint_min 48",
+    "hevc_360p": "-vf scale=-2:360 -c:v libx265 -preset medium -b:v 850k -maxrate 900k -bufsize 1275k -x265-params aud=1 -movflags -g 48 -keyint_min 48",
     
-    "h264_sport_1080p60": "-vf scale=-2:1080 -r 60 -c:v libx264 -preset medium -b:v 8000k -maxrate 8500k -bufsize 12000k -g 120",
+    "h264_sport_1080p60": "-vf scale=-2:1080 -r 60 -c:v libx264 -preset medium -b:v 8000k -maxrate 8500k -bufsize 12000k -x264-params aud=1 -movflags -g 120",
 
-    "h264_sport_720p60": "-vf scale=-2:720 -r 60 -c:v libx264 -b:v 4500k -maxrate 4800k -bufsize 7000k -g 120",
+    "h264_sport_720p60": "-vf scale=-2:720 -r 60 -c:v libx264 -b:v 4500k -maxrate 4800k -bufsize 7000k -x264-params aud=1 -movflags -g 120",
 
-    "h264_sport_540p60": "-vf scale=-2:540 -r 60 -c:v libx264 -b:v 2800k -maxrate 3000k -bufsize 4200k -g 120",
+    "h264_sport_540p60": "-vf scale=-2:540 -r 60 -c:v libx264 -b:v 2800k -maxrate 3000k -bufsize 4200k -x264-params aud=1 -movflags -g 120",
 
-    "h264_sport_480p60": "-vf scale=-2:480 -r 60 -c:v libx264 -b:v 1800k -maxrate 1900k -bufsize 2700k -g 120",
+    "h264_sport_480p60": "-vf scale=-2:480 -r 60 -c:v libx264 -b:v 1800k -maxrate 1900k -bufsize 2700k -x264-params aud=1 -movflags -g 120",
 
-    "h264_sport_360p60": "-vf scale=-2:360 -r 60 -c:v libx264 -b:v 1100k -maxrate 1200k -bufsize 1650k -g 120",
+    "h264_sport_360p60": "-vf scale=-2:360 -r 60 -c:v libx264 -b:v 1100k -maxrate 1200k -bufsize 1650k -x264-params aud=1 -movflags -g 120",
     
     "svtav1_1080p": "-vf scale=-2:1080 -c:v libsvtav1 -preset 6 -rc 1 -b:v 4200k -maxrate 4500k -bufsize 6300k -g 48 -svtav1-params tune=0",
 

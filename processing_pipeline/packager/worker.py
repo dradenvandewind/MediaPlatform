@@ -44,28 +44,46 @@ class PackagerWorker(BaseWorker):
         return results
     """
     async def run(self, job_id: str, job_data: dict) -> dict:
-        muxed_files = job_data.get("transcoded_videos") or job_data.get("muxed_files", [])
+        log.info("[packager] job_data keys: %s", list(job_data.keys()))
 
-        if not muxed_files:
+        transcoded_videos = job_data.get("transcoded_videos") or job_data.get("muxed_files", [])
+        audio_files       = job_data.get("encoded_audios", [])
+
+        if not transcoded_videos:
             raise ValueError("No video files to package")
+
+        # ← ici
+        if len(transcoded_videos) != len(audio_files):
+            log.warning("video/audio count mismatch: %d vs %d — using video only",
+                        len(transcoded_videos), len(audio_files))
+            muxed_files = [(v, None) for v in transcoded_videos]
+        else:
+            muxed_files = list(zip(transcoded_videos, audio_files))
+
+        log.info("[packager] %d video+audio pairs: %s", len(muxed_files), muxed_files)
 
         results: dict[str, list[str]] = {"hls": [], "dash": [], "cmaf": []}
 
         async with S3Manager(self.s3_bucket, self.s3_region) as s3:
-            for key in muxed_files:
-                local = f"/tmp/{Path(key).name}"
-                await s3.download(key, local)
-                log.info("downloaded %s → %s", key, local)
+            for video_key, audio_key in muxed_files:
+                local_video = f"/tmp/{Path(video_key).name}"
+                local_audio = f"/tmp/{Path(audio_key).name}" if audio_key else None
 
-                output = await self._package_all(local, s3, job_id)
-                results["hls"].append(output["hls"])
-                results["dash"].append(output["dash"])
-                results["cmaf"].append(output["cmaf"])
+                await s3.download(video_key, local_video)
+                if audio_key and local_audio:
+                    await s3.download(audio_key, local_audio)
 
-                try:
-                    os.remove(local)
-                except FileNotFoundError:
-                    pass
+                log.info("downloaded video=%s audio=%s", local_video, local_audio)
+
+                results["hls"].append(await self._hls(local_video, local_audio, s3))
+                results["dash"].append(await self._dash(local_video, local_audio, s3))
+                results["cmaf"].append(await self._cmaf(local_video, local_audio, s3))
+
+                for local_path in filter(None, [local_video, local_audio]):
+                    try:
+                        os.remove(local_path)
+                    except FileNotFoundError:
+                        pass
 
         log.info("packager done: %s", results)
         return results
@@ -81,38 +99,56 @@ class PackagerWorker(BaseWorker):
         if proc.returncode != 0:
             raise RuntimeError(stderr.decode())
 
-    async def _hls(self, input_path: str, s3: S3Manager) -> str:
-        stem = Path(input_path).stem
+    async def _hls(self, video_path: str, audio_path: str | None, s3: S3Manager) -> str:
+        stem = Path(video_path).stem
         out  = Path(f"/tmp/hls_{stem}")
         out.mkdir(exist_ok=True)
 
-        # fMP4 segments pour HLS (requiert HLS v7+)
+        inputs = f"-i {video_path} "
+        maps   = "-map 0:v:0 "
+        if audio_path:
+            inputs += f"-i {audio_path} "
+            maps   += "-map 1:a:0 "
+            maps   += "-bsf:a aac_adtstoasc " 
+        else:
+            maps += "-map 0:a:0 "
+            maps   += "-bsf:a aac_adtstoasc "
+
         await self._run_cmd(
-            f"ffmpeg -i {input_path} "
-            f"-c copy "
-            f"-f hls "
-            f"-hls_time 6 "
+            f"ffmpeg -y {inputs}"
+            f"{maps}"
+            f"-c copy -f hls -hls_time 6 "
             f"-hls_playlist_type vod "
-            f"-hls_segment_type fmp4 "                         
-            f"-hls_fmp4_init_filename init.mp4 "               
-            f"-hls_segment_filename {out}/segment_%03d.m4s "   
-            f"-hls_flags independent_segments "                
+            f"-hls_segment_type fmp4 "
+            f"-hls_fmp4_init_filename init.mp4 "
+            f"-hls_segment_filename {out}/segment_%03d.m4s "
+            f"-hls_flags independent_segments "
             f"{out}/playlist.m3u8"
         )
-
         for f in out.glob("*"):
             await s3.upload(str(f), f"hls/{stem}/{f.name}")
-
         log.info("HLS fMP4 packaged → hls/%s/playlist.m3u8", stem)
         return f"hls/{stem}/playlist.m3u8"
 
-    async def _dash(self, input_path: str, s3: S3Manager) -> str:
-        stem = Path(input_path).stem
+
+    async def _dash(self, video_path: str, audio_path: str | None, s3: S3Manager) -> str:
+        stem = Path(video_path).stem
         out  = Path(f"/tmp/dash_{stem}")
         out.mkdir(exist_ok=True)
+
+        inputs = f"-i {video_path} "
+        maps   = "-map 0:v:0 "
+        if audio_path:
+            inputs += f"-i {audio_path} "
+            maps   += "-map 1:a:0 "
+        else:
+            maps += "-map 0:a:0 "
+
         await self._run_cmd(
-            f"ffmpeg -i {input_path} -c copy -f dash "
-            f"-seg_duration 4 -use_template 1 -use_timeline 1 "
+            f"ffmpeg -y {inputs}"
+            f"{maps}"
+            f"-c copy -f dash "
+            f"-seg_duration 6 -use_template 1 -use_timeline 1 "
             f"-adaptation_sets \"id=0,streams=v id=1,streams=a\" "
             f"{out}/manifest.mpd"
         )
@@ -121,24 +157,37 @@ class PackagerWorker(BaseWorker):
         log.info("DASH packaged → dash/%s/manifest.mpd", stem)
         return f"dash/{stem}/manifest.mpd"
 
-    async def _cmaf(self, input_path: str, s3: S3Manager) -> str:
-        stem = Path(input_path).stem
+
+    async def _cmaf(self, video_path: str, audio_path: str | None, s3: S3Manager) -> str:
+        stem = Path(video_path).stem
         out  = Path(f"/tmp/cmaf_{stem}")
         out.mkdir(exist_ok=True)
+
+        inputs = f"-i {video_path} "
+        maps   = "-map 0:v:0 "
+        if audio_path:
+            inputs += f"-i {audio_path} "
+            maps   += "-map 1:a:0 "
+        else:
+            maps += "-map 0:a:0 "
+
         await self._run_cmd(
-            f"ffmpeg -i {input_path} -c copy -f dash "
-            f"-seg_duration 4 -use_template 1 -use_timeline 1 "
-            f"-movflags cmaf+frag_keyframe "
+            f"ffmpeg -y {inputs}"
+            f"{maps}"
+            f"-c copy -f dash "
+            f"-seg_duration 6 -use_template 1 -use_timeline 1 "
+            f"-movflags cmaf+frag_keyframe+empty_moov+default_base_moof "
             f"-adaptation_sets \"id=0,streams=v id=1,streams=a\" "
+            f"-hls_playlist 1 -hls_master_name master.m3u8 "
             f"{out}/manifest.mpd"
         )
         for f in out.glob("*"):
             await s3.upload(str(f), f"cmaf/{stem}/{f.name}")
         log.info("CMAF packaged → cmaf/%s/manifest.mpd", stem)
         return f"cmaf/{stem}/manifest.mpd"
-    
-    async def _package_all(self, input_path: str, s3: S3Manager, job_id: str) -> dict[str, str]:
-        stem = Path(input_path).stem
+        
+    async def _package_all(self, video_path: str, audio_path: str, s3: S3Manager, job_id: str) -> dict:
+        stem = Path(video_path).stem
         out  = Path(f"/tmp/package_{stem}")
         out.mkdir(exist_ok=True)
 
@@ -147,15 +196,13 @@ class PackagerWorker(BaseWorker):
         hls_dir.mkdir(exist_ok=True)
         dash_dir.mkdir(exist_ok=True)
 
-        # Une seule commande ffmpeg → HLS fMP4 + DASH + CMAF en parallèle
         cmd = (
-            f"ffmpeg -i {input_path} "
+            f"ffmpeg -y "
+            f"-i {video_path} "      # ← video
+            f"-i {audio_path} "      # ← audio séparé
+            f"-map 0:v:0 -map 1:a:0 "  # ← mux video + audio
 
-            # ── Tee : duplique le flux vers plusieurs sorties ──
-            f"-filter_complex \"[0:v]split=1[v1];[0:a]asplit=1[a1]\" "
-
-            # ── HLS fMP4 ──
-            f"-map \"[v1]\" -map \"[a1]\" "
+            # HLS fMP4
             f"-c copy "
             f"-f hls "
             f"-hls_time 6 "
@@ -166,19 +213,19 @@ class PackagerWorker(BaseWorker):
             f"-hls_flags independent_segments "
             f"{hls_dir}/playlist.m3u8 "
 
-            # ── DASH + CMAF (même segments fMP4 réutilisés) ──
-            f"-map 0:v -map 0:a "
+            # DASH + CMAF
+            f"-map 0:v:0 -map 1:a:0 "
             f"-c copy "
             f"-f dash "
             f"-seg_duration 6 "
-            f"-use_template 1 "
-            f"-use_timeline 1 "
+            f"-use_template 1 -use_timeline 1 "
             f"-movflags cmaf+frag_keyframe+empty_moov+default_base_moof "
             f"-adaptation_sets \"id=0,streams=v id=1,streams=a\" "
-            f"-hls_playlist 1 "                          # ← génère aussi un .m3u8 CMAF
+            f"-hls_playlist 1 "
             f"-hls_master_name master.m3u8 "
             f"{dash_dir}/manifest.mpd"
         )
+        
 
         proc = await asyncio.create_subprocess_shell(
             cmd,

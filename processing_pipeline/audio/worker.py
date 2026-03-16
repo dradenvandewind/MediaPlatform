@@ -59,7 +59,7 @@ class AudioWorker(BaseWorker):
     async def _encode(self, input_path: str, output_path: str) -> None:
         cmd = (
             f"ffmpeg -i {input_path} "
-            f"-vn -c:a aac -b:a 192k -ar 48000 "
+            f"-vn -c:a aac -b:a 192k -ar 48000 -bsf:a aac_adtstoasc "
             f"{output_path}"
         )
         proc = await asyncio.create_subprocess_shell(
