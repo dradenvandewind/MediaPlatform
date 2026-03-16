@@ -11,6 +11,7 @@ networks:
 # ---------------------------------------------------------------------------
 volumes:
   minio_data:
+  video_cache_data:
   prometheus_data:
   grafana_data:
   loki_data:
@@ -135,27 +136,50 @@ services:
       /bin/sh -c "
         mc alias set local http://minio:9000 ${AWS_ACCESS_KEY_ID:-minioadmin} ${AWS_SECRET_ACCESS_KEY:-minioadmin};
         mc mb --ignore-existing local/${S3_BUCKET:-ott-bucket};
+        mc anonymous set download local/${S3_BUCKET:-ott-bucket};
         echo 'bucket ready';
       "
     networks:
       - ott_net
 
-  # ── Redis (bus d'événements / orchestrateur simplifié) ──────────────────
-  # orchestrator:
-  #   image: redis:7-alpine
-  #   container_name: ott_orchestrator
-  #   ports:
-  #     - "6379:6379"
-  #   networks:
-  #     - ott_net
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 5
+  # ── Edge Cache (Nginx optimisé pour la vidéo) ──────────────────────────
+  edge_cache:
+    image: nginx:alpine
+    container_name: ott_edge_cache
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx_cache.conf:/etc/nginx/conf.d/default.conf:ro
+      - video_cache_data:/var/cache/nginx
+      - ./nginx_cache.conf:/etc/nginx/conf.d/default.conf:ro
+      # - ./nginx.crt:/etc/nginx/certs/nginx.crt:ro
+      # - ./nginx.key:/etc/nginx/certs/nginx.key:ro
+    
+    networks:
+      - ott_net
+    depends_on:
+      minio:
+        condition: service_healthy
+  player:
+    image: nginx:alpine
+    container_name: ott_player
+    ports:
+      - "8079:80"
+    volumes:
+      - ./nginx/player:/usr/share/nginx/html:ro
+    networks:
+      - ott_net
 
-  # ── Workers ──────────────────────────────────────────────────────────────
-
+  nginx_exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: ott_nginx_exporter
+    command:
+      - "-nginx.scrape-uri=http://ott_edge_cache:80/metrics"
+    networks:
+      - ott_net
+    depends_on:
+      - edge_cache
   ingest:
     build:
       context: processing_pipeline/
@@ -173,6 +197,8 @@ services:
         condition: service_completed_successfully
       orchestrator:
         condition: service_healthy
+    # deploy:
+    #   replicas: 1
     networks:
       - ott_net
     restart: on-failure
@@ -212,18 +238,21 @@ services:
     build:
       context: processing_pipeline/
       dockerfile: transcoder/Dockerfile
-    container_name: ott_transcoder
+    #container_name: ott_transcoder
     <<: *worker-labels
     environment:
       <<: *common-env
       AWS_ENDPOINT_URL: http://minio:9000
     ports:
-      - "8082:8080"
+      #- "8082:8080"
+      - "8182-8185:8080"
     depends_on:
       minio_init:
         condition: service_completed_successfully
       orchestrator:
         condition: service_healthy
+    deploy:
+        replicas: 2
     networks:
       - ott_net
 
@@ -240,18 +269,21 @@ services:
     build:
       context: processing_pipeline/
       dockerfile: audio/Dockerfile
-    container_name: ott_audio
+    #container_name: ott_audio
     <<: *worker-labels
     environment:
       <<: *common-env
       AWS_ENDPOINT_URL: http://minio:9000
     ports:
-      - "8083:8080"
+      #- "8083:8080"
+      - "8093-8095:8080"
     depends_on:
       minio_init:
         condition: service_completed_successfully
       orchestrator:
         condition: service_healthy
+    deploy:
+      replicas: 2
     networks:
       - ott_net
     restart: on-failure
@@ -266,18 +298,21 @@ services:
     build:
       context: processing_pipeline/
       dockerfile: packager/Dockerfile
-    container_name: ott_packager
+    #container_name: ott_packager
     <<: *worker-labels
     environment:
       <<: *common-env
       AWS_ENDPOINT_URL: http://minio:9000
     ports:
-      - "8084:8080"
+      #- "8084:8080"
+      - "8284-8286:8080"
     depends_on:
       minio_init:
         condition: service_completed_successfully
       orchestrator:
         condition: service_healthy
+    deploy:
+      replicas: 2
     networks:
       - ott_net
     restart: on-failure
