@@ -3,3 +3,42 @@ docker compose build --no-cache ingest transcoder audio packager
 docker compose up --force-recreate
 
 docker compose build --no-cache ingest orchestrator && docker compose up --force-recreate
+
+#api plateform http://localhost:8000/docs
+
+
+#start job
+
+send_job_320.sh
+
+send_job_1080.sh
+
+https://download.blender.org/peach/bigbuckbunny_movies/
+
+S3 
+http://127.0.0.1:9001/browser/ott-bucket/job-eb80c1c34842%2Fdash%2F1080p%2F
+
+
+
+#grafana admin admin
+http://localhost:3000/login
+
+
+sum(rate(nginx_http_requests_total{status="200"}[5m])) by (upstream_cache_status)
+
+(sum(rate(nginx_http_requests_total{upstream_cache_status="HIT"}[5m])) / sum(rate(nginx_http_requests_total{upstream_cache_status=~"HIT|MISS"}[5m]))) * 100
+
+
+
+#promotheus
+http://localhost:9090/login
+
+Display output
+
+ffplay http://localhost:8080/ott-bucket/job-eb80c1c34842/dash/1080p/manifest.mpd
+
+
+http://reference.dashif.org/dash.js/nightly/samples/dash-if-reference-player-legacy/index.html
+
+# internal player
+http://localhost:8079
