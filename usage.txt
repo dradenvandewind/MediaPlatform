@@ -42,3 +42,10 @@ http://reference.dashif.org/dash.js/nightly/samples/dash-if-reference-player-leg
 
 # internal player
 http://localhost:8079
+
+http://localhost:8079/N-multiview.html
+
+http://localhost:8080/ott-bucket/31e915c3d00a/cmaf/480p/manifest.mpd
+
+#player hlsjs
+https://hlsjs.video-dev.org/demo/
