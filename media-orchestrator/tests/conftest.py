@@ -97,7 +97,7 @@ def make_job_status(
         current_stage = current_stage,
         created_at    = now,
         updated_at    = now,
-        metadata      = {"video_url": "s3://bucket/video.mp4", "resolutions": ["1080p"]},
+        metadata      = {"video_url": "s3://bucket/video.mp4", "profiles": ["1080p"]},
         results       = {},
         error         = error,
     )

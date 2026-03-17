@@ -8,7 +8,7 @@ class TestJobSubmitRequest:
     def test_minimal(self):
         req = JobSubmitRequest(video_url="s3://bucket/v.mp4")
         assert req.video_url == "s3://bucket/v.mp4"
-        assert req.resolutions == ["1080p", "720p", "480p"]
+        assert req.profiles == ["1080p", "720p", "480p"]
         assert req.audio_tracks == ["en"]
         assert req.subtitles == []
         assert req.watermark_config is None
@@ -17,13 +17,13 @@ class TestJobSubmitRequest:
     def test_full(self):
         req = JobSubmitRequest(
             video_url        = "s3://b/v.mp4",
-            resolutions      = ["720p"],
+            profiles      = ["720p"],
             audio_tracks     = ["fr", "en"],
             subtitles        = ["fr"],
             watermark_config = {"text": "DEMO"},
             drm_config       = {"provider": "widevine"},
         )
-        assert req.resolutions == ["720p"]
+        assert req.profiles == ["720p"]
         assert req.watermark_config == {"text": "DEMO"}
 
     def test_model_dump(self):

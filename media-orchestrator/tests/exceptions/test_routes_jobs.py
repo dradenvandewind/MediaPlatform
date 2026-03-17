@@ -11,7 +11,7 @@ from tests.conftest import make_job_status
 
 SUBMIT_PAYLOAD = {
     "video_url":   "s3://bucket/video.mp4",
-    "resolutions": ["1080p", "720p"],
+    "profiles": ["1080p", "720p"],
     "audio_tracks": ["en", "fr"],
 }
 
@@ -25,7 +25,7 @@ class TestSubmitJob:
         assert data["job_id"].startswith("job-")
 
     async def test_missing_video_url(self, client):
-        r = await client.post("/jobs/submit", json={"resolutions": ["720p"]})
+        r = await client.post("/jobs/submit", json={"profiles": ["720p"]})
         assert r.status_code == 422
 
     async def test_orchestrator_error_returns_503(self, client, orchestrator):
