@@ -1,15 +1,26 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
+
+VALID_RESOLUTIONS = {"2160p", "1080p", "720p", "480p", "360p"}
 
 class JobSubmitRequest(BaseModel):
     video_url: str
     title:       str = "untitled"
-    resolutions: List[str] = ["1080p", "720p", "480p"]
+    profiles: List[str] = []
     audio_tracks: List[str] = ["en"]
     subtitles: List[str] = []
     watermark_config: Optional[Dict[str, Any]] = None
     drm_config: Optional[Dict[str, Any]] = None
+    
+    @validator("profiles")
+    def check_profiles(cls, v):
+        invalid = set(v) - VALID_RESOLUTIONS
+        if invalid:
+            raise ValueError(f" Invalid profiles : {invalid}")
+        if not v:
+            raise ValueError("At least one profile is required")
+        return v
 
 class AdvanceJobRequest(BaseModel):
     stage: str
