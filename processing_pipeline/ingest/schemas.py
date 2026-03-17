@@ -1,15 +1,18 @@
 """Schémas Pydantic propres au nœud d'ingestion."""
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
+Resolution = Literal["2160p", "1080p", "720p", "480p", "360p"]
 
 class IngestRequest(BaseModel):
     source_url:  HttpUrl | None = None
     source_path: str | None     = None
     video_url:   str | None     = None
     title:       str            = Field(default="untitled", min_length=1, max_length=255)  # ← default    
-    profiles:    list[str]      = Field(default=["1080p", "720p", "480p"])
+    #profiles:    list[str]      = Field(default=["1080p", "720p", "480p"])
+    #profiles: list[str] = Field(default=["480p"], min_length=1)
+    profiles: list[str] = Field( min_length=1)
     metadata:    dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
