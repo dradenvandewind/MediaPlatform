@@ -14,8 +14,13 @@ from app.orchestrator import JobNotFoundError, OrchestratorError, MediaOrchestra
 from .deps import get_orchestrator
 from typing import Annotated, Optional
 from fastapi import Query, Depends
+import json
+import logging
+
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.post("/submit", status_code=201)
@@ -25,7 +30,8 @@ async def submit_job(
     orc: MediaOrchestrator = Depends(get_orchestrator),
 ):
     try:
-        job_id    = f"job-{uuid.uuid4().hex[:12]}"
+        #job_id    = f"job-{uuid.uuid4().hex[:12]}"
+        job_id    = f"{uuid.uuid4().hex[:12]}"
         now       = datetime.now(timezone.utc).isoformat()
         job_input = body.model_dump()
 
@@ -38,13 +44,15 @@ async def submit_job(
             metadata      = job_input,
             results       = {},
         )
+        logger.info("Submitting job %s: %s", job_id, job_input)
         await orc.save_job(status)
         await orc.send_to_stage("ingest", {
             "job_id":        job_id,
             "created_at":    now,
-            "input":         job_input,
+            "input":         json.dumps(job_input),
             "current_stage": "ingest",
         })
+        #  "input":         job_input,
 
         return {
             "success":    True,
