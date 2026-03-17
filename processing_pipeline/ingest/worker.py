@@ -26,8 +26,10 @@ class IngestWorker(BaseWorker):
         super().__init__(node_type="ingest", **kwargs)
 
     async def run(self, job_id: str, job_data: dict) -> dict:
-        req = IngestRequest.model_validate(job_data)
-        log.info("[%s] start – %s", job_id, req.title)
+        #req = IngestRequest.model_validate(job_data)
+        log.info("[%s] validating input...", job_data)
+        req = IngestRequest.model_validate(job_data["input"] or job_data)
+        log.info("job[%s] start – %s", job_id, req.title)
 
         with tempfile.TemporaryDirectory(prefix=f"ingest_{job_id}_") as tmpdir:
             if req.source_url:

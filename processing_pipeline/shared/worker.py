@@ -119,8 +119,8 @@ class BaseWorker(ABC):
         # ── Ajouter les champs directs du stream ────────────────────────────
         skip = {"job_id", "input", "current_stage", "previous_results"}
         for k, v in fields.items():
-            if k in skip:
-                continue
+            #if k in skip:
+            #    continue
             try:
                 job_data[k] = json.loads(v)
             except (json.JSONDecodeError, TypeError):

@@ -54,7 +54,7 @@ class AudioWorker(BaseWorker):
             except FileNotFoundError:
                 pass
 
-        return {"encoded_audios": encoded}
+            return {"encoded_audios": encoded}
 
     async def _encode(self, input_path: str, output_path: str) -> None:
         cmd = (

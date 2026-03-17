@@ -1,0 +1,26 @@
+worker.py - Notable Points
+
+LiveStreamState is a dataclass that handles processes, the stop_event, and counters. Clean, no global state.
+_read_and_segment(): Non-blocking read of stdout from moq-sub using asyncio.wait_for(..., timeout=2). If timeout occurs, it simply checks if it's time to flush. No busy loop. Flush is triggered by duration (SEGMENT_DURATION) or size (SEGMENT_BUFFER_MB), whichever comes first.
+stop_stream() raises an asyncio.Event. _read_and_segment() cleanly detects it on the next iteration, clears the residual, and terminates without SIGKILL.
+_cleanup(): terminate() → wait_for(5s) → kill() if resistant.
+
+
+app.py — specific routes
+RouteRolePOST /live/startStarts ingest in the background task, returns stream_id immediatelyGET /liveLists all active streams with uptime + bytesGET /live/{stream_id}Detailed statusPOST /live/{stream_id}/stopClean stop, flushes the last segment
+
+Dockerfile — 3 stages
+
+rust-chef / rust-builder: compiles moq-relay and moq-sub with cargo-chef for optimal caching (Rust dependencies only recompile if Cargo.lock changes)
+cert-gen: generates a self-signed P-256 TLS certificate (QUIC requires this even in development)
+python:3.11-slim: copies the Rust binaries, certificates, and installs the Python deps
+
+
+Dockerfile — 3 stages
+
+rust-chef / rust-builder: compiles moq-relay and moq-sub with cargo-chef for optimal caching (Rust dependencies only recompile if Cargo.lock changes)
+cert-gen: generates a self-signed P-256 TLS certificate (QUIC requires this even in development)
+python:3.11-slim: copies the Rust binaries, certificates, and installs the Python deps
+
+
+In production, replace self-signed certificates with a Docker volume or secret, and remove --insecure from moq-sub.

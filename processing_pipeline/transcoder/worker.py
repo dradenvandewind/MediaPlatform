@@ -108,11 +108,11 @@ class TranscoderWorker(BaseWorker):
             except FileNotFoundError:
                 log.error(f"File '{out_path}' not found.")
                     
-        return {
-            "transcoded_videos": outputs,
-            "framerate": framerate,
-            "s3_key": s3_key,
-        }
+            return {
+                "transcoded_videos": outputs,
+                "framerate": framerate,
+                "s3_key": s3_key,
+            }
 
 
     async def _transcode(self, input_path: str, output_path: str, profile: str) -> None:

@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "vmaf"
+		}
+	],
+	"settings": {
+		"makefile.configureOnOpen": false
+	}
+}
