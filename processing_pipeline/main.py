@@ -29,7 +29,7 @@ def main():
     app, worker = nodes[node]()
 
     async def start():
-        #asyncio.create_task(worker.consume())  # ← event loop actif ici
+        #asyncio.create_task(worker.consume())  # ← active event loop here
         config = uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="debug")
         server = uvicorn.Server(config)
         await server.serve()
@@ -64,12 +64,13 @@ def _packager():
     worker = PackagerWorker()
     return create_packager_app(worker), worker  # ← worker passé
 
-def _vmaf():
+""" def _vmaf():
     from processing_pipeline.vmaf.app import create_vmaf_app
     from processing_pipeline.vmaf.worker import VmafWorker
     worker = VmafWorker()
     return create_vmaf_app(worker), worker  # ← worker passé    
-
+ """
+ 
 def _live_ingest():
     from processing_pipeline.live_moq.app import create_live_ingest_app
     from processing_pipeline.live_moq.worker import LiveIngestWorker
