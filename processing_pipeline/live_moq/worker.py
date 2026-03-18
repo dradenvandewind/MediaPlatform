@@ -3,7 +3,7 @@ LiveIngestWorker – ingère un flux live via MoQ (Media over QUIC Transport).
 
 Architecture :
   1. Lance moq-relay comme sous-processus (serveur QUIC local sur :4443)
-  2. Souscrit aux tracks du publisher externe via moq-sub
+  2. Souscrit aux tracks du publisher externe via moq-cli
   3. Accumule les segments fMP4 dans un fichier temporaire
   4. Upload l'init segment (init.mp4 = ftyp+moov) puis les media segments (NNNNNN.m4s = moof+mdat)
   5. Regénère et upload le manifest DASH dynamique (MPD type="dynamic") après chaque media segment
@@ -12,7 +12,7 @@ Architecture :
 Flux de données :
   Publisher (OBS/ffmpeg) ──MOQT/QUIC──► moq-relay :4443
                                               │
-                                        moq-sub (subprocess)
+                                        moq-cli (subprocess)
                                               │
                                         /tmp/segments/
                                               │
@@ -276,7 +276,7 @@ class LiveIngestWorker(BaseWorker):
                 continue
 
             if not chunk:
-                log.info("[%s/%s] moq-sub EOF", state.job_id, track)
+                log.info("[%s/%s] moq-cli EOF", state.job_id, track)
                 break
 
             buf += chunk

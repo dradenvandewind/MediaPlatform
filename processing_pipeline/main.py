@@ -18,7 +18,7 @@ def main():
         "transcoder": _transcoder,
         "audio":      _audio,
         "packager":   _packager,
-         "vmaf":       _vmaf,
+         "live_moq":   _live_ingest,
     }
 
     node = sys.argv[1] if len(sys.argv) > 1 else "ingest"

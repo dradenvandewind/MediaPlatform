@@ -94,9 +94,11 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
       pytest pytest-asyncio httpx
 
 # ── Code applicatif ───────────────────────────────────────────────────────────
-COPY . .
-#RUN cp ./main.py main.py
-# ── Variables d'environnement ─────────────────────────────────────────────────
+COPY . processing_pipeline/
+
+# main.py à la racine /app
+RUN cp processing_pipeline/main.py main.py
+
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 

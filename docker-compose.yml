@@ -208,30 +208,30 @@ services:
       timeout: 5s
       retries: 5
       
-  vmaf:
-    build:
-      context: ./processing_pipeline
-      dockerfile: vmaf/Dockerfile
-    container_name: ott_vmaf
-    <<: *worker-labels
-    environment:
-      <<: *common-env
-      AWS_ENDPOINT_URL: http://minio:9000
-    ports:
-      - "8085:8080"
-    depends_on:
-      minio_init:
-        condition: service_completed_successfully
-      orchestrator:
-        condition: service_healthy
-    networks:
-      - ott_net
-    restart: on-failure
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # vmaf:
+  #   build:
+  #     context: ./processing_pipeline
+  #     dockerfile: vmaf/Dockerfile
+  #   container_name: ott_vmaf
+  #   <<: *worker-labels
+  #   environment:
+  #     <<: *common-env
+  #     AWS_ENDPOINT_URL: http://minio:9000
+  #   ports:
+  #     - "8085:8080"
+  #   depends_on:
+  #     minio_init:
+  #       condition: service_completed_successfully
+  #     orchestrator:
+  #       condition: service_healthy
+  #   networks:
+  #     - ott_net
+  #   restart: on-failure
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
       
   # ── Transcoder ───────────────────────────────────────────────────────────
   transcoder:
@@ -321,6 +321,70 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  #live moq
+  # ══════════════════════════════════════════════════════════════════════════
+  # live_moq – Ingestion live via Media over QUIC Transport (moq-rs)
+  # API FastAPI sur :8080, moq-relay QUIC sur :4443
+  # ══════════════════════════════════════════════════════════════════════════
+  ott_live_moq:
+    build:
+      context: processing_pipeline/
+      dockerfile: live_moq/Dockerfile
+    #container_name: ott_live_moq
+    restart: unless-stopped
+
+    ports:
+      - "8085:8080"        # API FastAPI  → http://localhost:8085
+      - "4443:4443/udp"    # moq-relay QUIC (UDP)
+      - "4443:4443/tcp"    # moq-relay QUIC (TCP fallback)
+
+    environment:
+    environment:
+      <<: *common-env
+      # Pointer vers MinIO en local
+      AWS_ENDPOINT_URL: http://minio:9000
+      # ── MoQ-rs ──────────────────────────────────────────────────────────
+      MOQ_RELAY_BIN:   /usr/local/bin/moq-relay
+      MOQ_SUB_BIN:     /usr/local/bin/moq-sub
+      MOQ_RELAY_ADDR:  0.0.0.0:4443
+      MOQ_RELAY_URL:   https://localhost:4443
+      MOQ_CERT_PATH:   /certs/cert.pem
+      MOQ_KEY_PATH:    /certs/key.pem
+
+      # ── Segments ─────────────────────────────────────────────────────────
+      SEGMENT_DURATION:  "4"
+      SEGMENT_BUFFER_MB: "32"
+      DVR_WINDOW_S:      "60"
+      MPD_UPDATE_S:      "2"
+      PLAYER_DELAY_S:    "10"
+      MAX_STREAM_HOURS:  "12"
+
+       # ── Python ───────────────────────────────────────────────────────────
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH:       /app
+
+    depends_on:
+      - minio
+      - orchestrator
+      - redis
+
+    healthcheck:
+      test:     ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 15s
+      timeout:  5s
+      retries:  3
+      start_period: 25s    # moq-relay prend ~20s à compiler les certs au 1er boot
+
+    networks:
+      - ott_net
+
+    volumes:
+      - /tmp/moq_segments:/tmp   # segments temporaires hors du container
+
+
+
+
+
 
   # ── Monitoring ───────────────────────────────────────────────────────────
 

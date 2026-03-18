@@ -1,11 +1,11 @@
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-#from processing_pipeline.live_moq.worker import LiveIngestWorker
-#from processing_pipeline.shared.app_factory import create_worker_app
-from worker import LiveIngestWorker
+from processing_pipeline.live_moq.worker import LiveIngestWorker
 from processing_pipeline.shared.app_factory import create_worker_app
-
+""" from worker import LiveIngestWorker
+from processing_pipeline.shared.app_factory import create_worker_app
+ """
 
 worker = LiveIngestWorker()
 

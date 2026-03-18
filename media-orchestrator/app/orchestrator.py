@@ -53,6 +53,7 @@ class MediaOrchestrator:
     ]
     #vmaf
    
+    LIVE_PIPELINE_STAGES = ["live_moq"]
     
     
     

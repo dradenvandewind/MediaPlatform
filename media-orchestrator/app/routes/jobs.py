@@ -189,3 +189,43 @@ async def delete_job(
         raise
     except OrchestratorError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+ 
+ 
+ # live section 
+ 
+    
+@router.post("/jobs/live/submit", status_code=201)
+async def submit_live_job(
+    body: LiveJobSubmitRequest,
+    orc: MediaOrchestrator = Depends(get_orchestrator),
+):
+    job_id = f"{uuid.uuid4().hex[:12]}"
+    now    = datetime.now(timezone.utc).isoformat()
+
+    job_input = body.model_dump()
+
+    status = JobStatus(
+        job_id        = job_id,
+        status        = "pending",
+        current_stage = "live_moq",
+        created_at    = now,
+        updated_at    = now,
+        metadata      = job_input,
+        results       = {},
+    )
+    await orc.save_job(status)
+
+    # Envoie dans le stream Redis jobs:live_moq
+    await orc.send_to_stage("live_moq", {
+        "job_id":        job_id,
+        "created_at":    now,
+        "input":         json.dumps(job_input),
+        "current_stage": "live_moq",
+    })
+
+    return {
+        "success":  True,
+        "job_id":   job_id,
+        "message":  "Live job submitted",
+        "stop_url": f"/jobs/live/{job_id}/stop",
+    }
