@@ -77,27 +77,19 @@ services:
     networks:
       - ott_net
 
-  # ── Redis (bus d'événements / orchestrateur simplifié) ──────────────────
-  # orchestrator:
-  #   image: redis:7-alpine
-  #   container_name: ott_orchestrator
-  #   ports:
-  #     - "6379:6379"
-  #   networks:
-  #     - ott_net
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 5
-
-  # ── Workers ──────────────────────────────────────────────────────────────
-
+  # ── Ingest ─────────────────────────────────────────────────────────────
   ingest:
     build:
       context: .
       dockerfile: ingest/Dockerfile
-    container_name: ott_ingest
+    #container_name: ott_ingest
+    deploy:
+      replicas: 1
+      resources:        
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
     <<: *worker-labels
     environment:
       <<: *common-env
@@ -119,43 +111,45 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  vmaf:
-    build:
-      context: ./processing_pipeline
-      dockerfile: vmaf/Dockerfile
-    container_name: ott_vmaf
-    <<: *worker-labels
-    environment:
-      <<: *common-env
-      AWS_ENDPOINT_URL: http://minio:9000
-    ports:
-      - "8085:8080"
-    depends_on:
-      minio_init:
-        condition: service_completed_successfully
-      orchestrator:
-        condition: service_healthy
-    networks:
-      - ott_net
-    restart: on-failure
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # vmaf:
+  #   build:
+  #     context: ./processing_pipeline
+  #     dockerfile: vmaf/Dockerfile
+  #   container_name: ott_vmaf
+  #   <<: *worker-labels
+  #   environment:
+  #     <<: *common-env
+  #     AWS_ENDPOINT_URL: http://minio:9000
+  #   ports:
+  #     - "8085:8080"
+  #   depends_on:
+  #     minio_init:
+  #       condition: service_completed_successfully
+  #     orchestrator:
+  #       condition: service_healthy
+  #   networks:
+  #     - ott_net
+  #   restart: on-failure
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
 
   # ── Transcoder ───────────────────────────────────────────────────────────
   transcoder:
     build:
       context: .
       dockerfile: transcoder/Dockerfile
-    container_name: ott_transcoder
+    #container_name: ott_transcoder
+    deploy:
+      replicas: 2
     <<: *worker-labels
     environment:
       <<: *common-env
       AWS_ENDPOINT_URL: http://minio:9000
     ports:
-      - "8082:8080"
+      - "8092-8093:8080"
     depends_on:
       minio_init:
         condition: service_completed_successfully
@@ -177,13 +171,15 @@ services:
     build:
       context: .
       dockerfile: audio/Dockerfile
-    container_name: ott_audio
+    #container_name: ott_audio
+    deploy:
+      replicas: 2
     <<: *worker-labels
     environment:
       <<: *common-env
       AWS_ENDPOINT_URL: http://minio:9000
     ports:
-      - "8083:8080"
+      - "8100-8103:8080"
     depends_on:
       minio_init:
         condition: service_completed_successfully
@@ -204,13 +200,15 @@ services:
     build:
       context: .
       dockerfile: packager/Dockerfile
-    container_name: ott_packager
+    #container_name: ott_packager
+    deploy:
+      replicas: 2
     <<: *worker-labels
     environment:
       <<: *common-env
       AWS_ENDPOINT_URL: http://minio:9000
     ports:
-      - "8084:8080"
+      - "8200-8203:8080"
     depends_on:
       minio_init:
         condition: service_completed_successfully
