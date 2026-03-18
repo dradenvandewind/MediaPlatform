@@ -1,4 +1,4 @@
-"""PackagerWorker – produit les manifests HLS, DASH et CMAF."""
+"""PackagerWorker – produces HLS, DASH and CMAF manifests."""
 import asyncio
 import logging
 import os
@@ -6,6 +6,9 @@ from pathlib import Path
 
 from processing_pipeline.shared.s3 import S3Manager
 from processing_pipeline.shared.worker import BaseWorker
+
+from processing_pipeline.shared.metrics import JobTracker, track_ffmpeg
+
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +26,7 @@ class PackagerWorker(BaseWorker):
 
         log.info("audio and video files available: %s", muxed_files)
 
-        results: dict[str, list[str]] = {"hls": [], "dash": [], "cmaf": []}  # ← initialisation
+        results: dict[str, list[str]] = {"hls": [], "dash": [], "cmaf": []}  # ← initialization
 
         async with S3Manager(self.s3_bucket, self.s3_region) as s3:
             for key in muxed_files:
@@ -40,7 +43,7 @@ class PackagerWorker(BaseWorker):
                 except FileNotFoundError:
                     pass
 
-        log.info("packager done: %s", results)  # ← corrigé
+        log.info("packager done: %s", results)  # ← corrected
         return results
     """
     async def run(self, job_id: str, job_data: dict) -> dict:
@@ -52,7 +55,7 @@ class PackagerWorker(BaseWorker):
         if not transcoded_videos:
             raise ValueError("No video files to package")
 
-        # ← ici
+        
         if len(transcoded_videos) != len(audio_files):
             log.warning("video/audio count mismatch: %d vs %d — using video only",
                         len(transcoded_videos), len(audio_files))
@@ -63,27 +66,28 @@ class PackagerWorker(BaseWorker):
         log.info("[packager] %d video+audio pairs: %s", len(muxed_files), muxed_files)
 
         results: dict[str, list[str]] = {"hls": [], "dash": [], "cmaf": []}
+        async with JobTracker(node="packager"):
+            
+            async with S3Manager(self.s3_bucket, self.s3_region) as s3:
+                for video_key, audio_key in muxed_files:
+                    local_video = f"/tmp/{Path(video_key).name}"
+                    local_audio = f"/tmp/{Path(audio_key).name}" if audio_key else None
 
-        async with S3Manager(self.s3_bucket, self.s3_region) as s3:
-            for video_key, audio_key in muxed_files:
-                local_video = f"/tmp/{Path(video_key).name}"
-                local_audio = f"/tmp/{Path(audio_key).name}" if audio_key else None
+                    await s3.download(video_key, local_video)
+                    if audio_key and local_audio:
+                        await s3.download(audio_key, local_audio)
 
-                await s3.download(video_key, local_video)
-                if audio_key and local_audio:
-                    await s3.download(audio_key, local_audio)
+                    log.info("downloaded video=%s audio=%s", local_video, local_audio)
 
-                log.info("downloaded video=%s audio=%s", local_video, local_audio)
+                    results["hls"].append(await self._hls(local_video, local_audio, s3, job_id))
+                    results["dash"].append(await self._dash(local_video, local_audio, s3, job_id))
+                    results["cmaf"].append(await self._cmaf(local_video, local_audio, s3, job_id))
 
-                results["hls"].append(await self._hls(local_video, local_audio, s3, job_id))
-                results["dash"].append(await self._dash(local_video, local_audio, s3, job_id))
-                results["cmaf"].append(await self._cmaf(local_video, local_audio, s3, job_id))
-
-                for local_path in filter(None, [local_video, local_audio]):
-                    try:
-                        os.remove(local_path)
-                    except FileNotFoundError:
-                        pass
+                    for local_path in filter(None, [local_video, local_audio]):
+                        try:
+                            os.remove(local_path)
+                        except FileNotFoundError:
+                            pass
 
         log.info("packager done: %s", results)
         return results
@@ -199,7 +203,7 @@ class PackagerWorker(BaseWorker):
         cmd = (
             f"ffmpeg -y "
             f"-i {video_path} "      # ← video
-            f"-i {audio_path} "      # ← audio séparé
+            f"-i {audio_path} "      # ← separate audio
             f"-map 0:v:0 -map 1:a:0 "  # ← mux video + audio
 
             # HLS fMP4
