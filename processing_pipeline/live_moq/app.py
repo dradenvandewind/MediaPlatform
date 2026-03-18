@@ -3,7 +3,7 @@ app.py – FastAPI du nœud live_ingest.
 
 Routes héritées (create_worker_app) :
   GET  /health
-  POST /process       ← démarre un ingest live en background
+  POST /process       ← starts a live ingest in background
   GET  /metrics
 
 Routes spécifiques au live :

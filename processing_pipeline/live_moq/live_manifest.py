@@ -1,16 +1,16 @@
 """
-live_manifest.py – Génère et met à jour un manifest DASH dynamique (type="dynamic")
-au fur et à mesure que les segments arrivent.
+live_manifest.py – Generates and updates a dynamic DASH manifest (type="dynamic")
+as segments arrive.
 
-Appelé par LiveIngestWorker._flush_segment() après chaque upload S3.
+Called by LiveIngestWorker._flush_segment() after each S3 upload.
 
-Spécification DASH-IF Live :
-  - type="dynamic"          → le player re-fetch le manifest périodiquement
-  - availabilityStartTime   → epoch du premier segment
-  - minimumUpdatePeriod     → fréquence de re-fetch du manifest par le player
-  - timeShiftBufferDepth    → fenêtre glissante des segments disponibles (DVR)
-  - $Number$                → le player calcule les URLs par numéro de segment
-  - suggestedPresentationDelay → délai de lecture recommandé (latence live)
+DASH-IF Live spec:
+  - type="dynamic"          → player re-fetches the manifest periodically
+  - availabilityStartTime   → epoch of the first segment
+  - minimumUpdatePeriod     → how often the player re-fetches the manifest
+  - timeShiftBufferDepth    → sliding window of available segments (DVR)
+  - $Number$                → player computes segment URLs by number
+  - suggestedPresentationDelay → recommended playback delay (live latency)
 """
 
 import logging
@@ -37,42 +37,42 @@ ET.register_namespace("xlink", _NS_XLINK)
 
 @dataclass
 class TrackInfo:
-    """Métadonnées d'une track (video ou audio)."""
+    """Metadata for a track (video or audio)."""
     track_id:    str                    # "video" | "audio"
     mime_type:   str                    # "video/mp4" | "audio/mp4"
     codecs:      str                    # "avc1.42c01f" | "mp4a.40.2"
-    bandwidth:   int                    # bits/s estimé
-    # Vidéo uniquement
+    bandwidth:   int                    # estimated bits/s
+    # Video only
     width:       Optional[int] = None
     height:      Optional[int] = None
-    frame_rate:  Optional[str] = None   # "30000/1001" ou "30"
-    # Audio uniquement
+    frame_rate:  Optional[str] = None   # "30000/1001" or "30"
+    # Audio only
     audio_sampling_rate: Optional[int] = None
     num_channels:        Optional[int] = None
 
 
 @dataclass
 class SegmentEntry:
-    """Un segment uploadé sur S3."""
+    """A segment uploaded to S3."""
     track_id:    str
-    number:      int                    # index absolu depuis le début du stream
-    s3_key:      str                    # ex: live/stream-abc/video/000042.m4s
-    duration_s:  float                  # durée réelle du segment
+    number:      int                    # absolute index since stream start
+    s3_key:      str                    # e.g. live/stream-abc/video/000042.m4s
+    duration_s:  float                  # actual segment duration
     byte_size:   int
     wall_time:   float = field(default_factory=time.time)
 
 
 class LiveManifestWriter:
     """
-    Construit et met à jour un MPD dynamique.
+    Builds and updates a dynamic MPD.
 
-    Usage :
+    Usage:
         writer = LiveManifestWriter(
             stream_id        = "stream-abc123",
             s3_base_url      = "https://cdn.example.com/live/stream-abc123",
             segment_duration = 4,
         )
-        # Après chaque flush de segment :
+        # After each segment flush:
         writer.add_segment(SegmentEntry(...))
         mpd_xml = writer.render()
     """
@@ -80,11 +80,11 @@ class LiveManifestWriter:
     def __init__(
         self,
         stream_id:            str,
-        s3_base_url:          str,          # URL publique de la racine des segments S3
-        segment_duration:     float = 4.0,  # durée cible d'un segment (secondes)
-        time_shift_buffer:    float = 60.0, # fenêtre DVR (secondes)
-        min_update_period:    float = 2.0,  # fréquence de re-fetch manifest (secondes)
-        suggested_delay:      float = 10.0, # latence live recommandée (secondes)
+        s3_base_url:          str,          # public URL root for S3 segments
+        segment_duration:     float = 4.0,  # target segment duration (seconds)
+        time_shift_buffer:    float = 60.0, # DVR window (seconds)
+        min_update_period:    float = 2.0,  # manifest re-fetch frequency (seconds)
+        suggested_delay:      float = 10.0, # recommended live latency (seconds)
         tracks: Optional[list[TrackInfo]] = None,
     ):
         self.stream_id         = stream_id
@@ -94,7 +94,7 @@ class LiveManifestWriter:
         self.min_update_period = min_update_period
         self.suggested_delay   = suggested_delay
 
-        # Tracks par défaut si non fournies
+        # Default tracks if none are provided
         self.tracks: list[TrackInfo] = tracks or [
             TrackInfo(
                 track_id   = "video",
@@ -115,7 +115,7 @@ class LiveManifestWriter:
             ),
         ]
 
-        # État interne
+        # Internal state
         self._start_time: float = time.time()
         self._segments:   dict[str, list[SegmentEntry]] = {
             t.track_id: [] for t in self.tracks
@@ -124,7 +124,7 @@ class LiveManifestWriter:
     # ── API publique ──────────────────────────────────────────────────────────
 
     def add_segment(self, entry: SegmentEntry) -> None:
-        """Enregistre un nouveau segment. Thread-safe si appelé depuis asyncio."""
+        """Registers a new segment. Thread-safe when called from asyncio."""
         if entry.track_id not in self._segments:
             self._segments[entry.track_id] = []
         self._segments[entry.track_id].append(entry)
@@ -134,11 +134,11 @@ class LiveManifestWriter:
         )
 
     def render(self) -> str:
-        """Génère le MPD XML complet. Appelé après chaque add_segment()."""
+        """Generates the full MPD XML. Called after each add_segment()."""
         now_utc  = datetime.now(timezone.utc)
         start_dt = datetime.fromtimestamp(self._start_time, tz=timezone.utc)
 
-        # ── Racine MPD ────────────────────────────────────────────────────────
+        # ── MPD root ────────────────────────────────────────────────────────
         mpd = ET.Element(f"{{{_NS_MPD}}}MPD", {
             f"{{{_NS_XSI}}}schemaLocation": (
                 f"{_NS_MPD} "
@@ -162,18 +162,18 @@ class LiveManifestWriter:
             "start": "PT0S",
         })
 
-        # ── AdaptationSet par track ───────────────────────────────────────────
+        # ── AdaptationSet per track ───────────────────────────────────────────
         for adapt_id, track in enumerate(self.tracks):
             self._build_adaptation_set(period, track, adapt_id)
 
-        # ── Rendu XML indenté ─────────────────────────────────────────────────
+        # ── Pretty-printed XML output ─────────────────────────────────────────
         raw = ET.tostring(mpd, encoding="unicode", xml_declaration=False)
         pretty = minidom.parseString(raw).toprettyxml(indent="  ")
-        # minidom ajoute sa propre déclaration XML, on préfixe la nôtre
+        # minidom adds its own XML declaration, so we prefix ours
         lines = pretty.splitlines()
-        xml_lines = [l for l in lines if l.strip()]  # retire lignes vides
+        xml_lines = [l for l in lines if l.strip()]  # remove empty lines
         xml_header = '<?xml version="1.0" encoding="UTF-8"?>'
-        body = "\n".join(xml_lines[1:])               # retire le header minidom
+        body = "\n".join(xml_lines[1:])               # drop minidom header
         return f"{xml_header}\n{body}\n"
 
     def get_manifest_s3_key(self) -> str:
@@ -224,24 +224,24 @@ class LiveManifestWriter:
         representation = ET.SubElement(adapt, f"{{{_NS_MPD}}}Representation", repr_attrs)
 
         # ── SegmentTemplate ───────────────────────────────────────────────────
-        # On utilise $Number$ + duration (en timescale units) pour un manifest
-        # compact sans liste exhaustive de segments.
+        # We use $Number$ + duration (in timescale units) for a compact manifest without
+        # an exhaustive list of segments.
         #
-        # Le player calcule :
+        # The player computes:
         #   URL = baseURL + media.replace("$Number$", floor(now - availStart) / segDur)
         #
-        timescale   = 1000                                # millisecondes
+        timescale   = 1000                                # milliseconds
         duration_tu = int(self.segment_duration * timescale)
         start_num   = 1
 
-        # Fenêtre DVR : numéro du premier segment encore disponible
+        # DVR window: number of the first segment still available
         if segs:
             total_segs   = segs[-1].number + 1
             window_segs  = math.ceil(self.time_shift_buffer / self.segment_duration)
             start_num    = max(1, total_segs - window_segs)
 
-        # Racine S3 de la track (sans le nom de fichier)
-        # ex: https://cdn.example.com/live/stream-abc/video
+        # Track S3 root (without filename)
+        # e.g. https://cdn.example.com/live/stream-abc/video
         base_url = f"{self.s3_base_url}/{track.track_id}"
 
         ET.SubElement(representation, f"{{{_NS_MPD}}}BaseURL").text = base_url + "/"
@@ -256,7 +256,7 @@ class LiveManifestWriter:
 
     @staticmethod
     def _estimate_bandwidth(track: TrackInfo, segs: list[SegmentEntry]) -> int:
-        """Calcule le bitrate moyen sur les 10 derniers segments si disponible."""
+        """Estimate average bitrate over the last 10 segments when available."""
         if not segs:
             return track.bandwidth
         recent = segs[-min(10, len(segs)):]
@@ -270,7 +270,7 @@ class LiveManifestWriter:
 
     @staticmethod
     def _iso_duration(seconds: float) -> str:
-        """Convertit des secondes en durée ISO 8601 (PT#.#S)."""
+        """Convert seconds to ISO 8601 duration (PT#.#S)."""
         if seconds == int(seconds):
             return f"PT{int(seconds)}S"
         return f"PT{seconds:.1f}S"
