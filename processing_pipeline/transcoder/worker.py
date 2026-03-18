@@ -1,9 +1,12 @@
-"""TranscoderWorker – transcode une vidéo source vers plusieurs profils."""
+"""TranscoderWorker – transcodes a source video to multiple profiles."""
 import asyncio
 import logging
 import os 
 from processing_pipeline.shared.s3 import S3Manager
 from processing_pipeline.shared.worker import BaseWorker
+
+from processing_pipeline.shared.metrics import JobTracker, track_ffmpeg
+
 import re 
 log = logging.getLogger(__name__)
 #todo  extract fps to inject it
@@ -77,22 +80,23 @@ class TranscoderWorker(BaseWorker):
             configs = self._build_configs(framerate)
         
             outputs: list[str] = []
-            for profile in profiles:
-                out_path = f"/tmp/{job_id}_{profile}.mp4"
-                await self._transcode(local_input, out_path, profile)
-                out_key = f"transcoded/{job_id}/{profile}.mp4"
-                await s3.upload(out_path, out_key)
+            async with JobTracker(node="transcoder"):
+                for profile in profiles:
+                    out_path = f"/tmp/{job_id}_{profile}.mp4"
+                    await self._transcode(local_input, out_path, profile)
+                    out_key = f"transcoded/{job_id}/{profile}.mp4"
+                    await s3.upload(out_path, out_key)
 
-                # ── Vérification que le fichier est bien dans S3 ──
-                try:
-                    meta = await s3.head(out_key)
-                    log.info("[%s] ✅ S3 confirmed: %s (%.1f MB)",
-                            profile, out_key, meta["size"] / 1024 / 1024)
-                except Exception as exc:
-                    raise RuntimeError(f"Upload verification failed for {out_key}: {exc}")
+                    # ── Verification that the file is properly in S3 ──
+                    try:
+                        meta = await s3.head(out_key)
+                        log.info("[%s] ✅ S3 confirmed: %s (%.1f MB)",
+                                profile, out_key, meta["size"] / 1024 / 1024)
+                    except Exception as exc:
+                        raise RuntimeError(f"Upload verification failed for {out_key}: {exc}")
 
-                outputs.append(out_key)
-                log.info("[%s] uploaded → s3://%s/%s", profile, self.s3_bucket, out_key)
+                    outputs.append(out_key)
+                    log.info("[%s] uploaded → s3://%s/%s", profile, self.s3_bucket, out_key)
 
         log.info("[transcoder] job=%s done — %d profiles: %s", job_id, len(outputs), outputs)
         try:
@@ -132,7 +136,7 @@ class TranscoderWorker(BaseWorker):
 
 
     async def _probe_framerate(self, path: str) -> float:
-        """Extract framerate in using ffprobe.  todo add ffropbe after ingest and backup database"""
+        """Extract framerate using ffprobe. todo add ffprobe after ingest and backup database"""
         cmd = (
             "ffprobe -v quiet "
             "-select_streams v:0 "
@@ -159,7 +163,7 @@ class TranscoderWorker(BaseWorker):
             return 25.0
     
     def _build_configs(self, framerate: float) -> dict[str, str]:
-        """Replace -g et -keyint_min by framerate*2 in all profils."""
+        """Replace -g and -keyint_min with framerate*2 in all profiles."""
         gop = int(round(framerate * 2))
         updated = {}
         for profile, params in FFMPEG_CONFIGS.items():
