@@ -44,7 +44,7 @@ class TestSaveJob:
     """
     async def test_db_error_raises_orchestrator_error(self, orchestrator):
         
-        import app.orchestrator as orc_module   # ← orc_module, pas db_module
+        import app.orchestrator as orc_module   # ← orc_module, not db_module
         original = orc_module.get_session
         def bad_session():
             raise RuntimeError("DB down")
@@ -59,7 +59,7 @@ class TestSaveJob:
             import app.orchestrator as orc_module
             original = orc_module.get_session
 
-            def bad_session():             # ← cette ligne manquait
+            def bad_session():             # ← this line was missing
                 raise RuntimeError("DB down")
 
             orc_module.get_session = bad_session
@@ -220,7 +220,7 @@ class TestMonitorJobs:
         await asyncio.sleep(0.05)
         task.cancel()
         try:
-            await task          # ← c'est ici que CancelledError est levé
+            await task          # ← it's here that CancelledError is raised
         except asyncio.CancelledError:
             pass                # attendu, le test passe
     """

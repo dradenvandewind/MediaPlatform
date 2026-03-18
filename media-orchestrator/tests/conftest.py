@@ -8,7 +8,7 @@ import fakeredis.aioredis as fakeredis
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import delete as sa_delete                          # ← AJOUT
+from sqlalchemy import delete as sa_delete                          # ← ADDED
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import Base, JobRecord, JobStatusEnum, get_session

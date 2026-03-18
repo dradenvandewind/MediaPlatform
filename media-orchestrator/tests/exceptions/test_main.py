@@ -25,7 +25,7 @@ class TestLifespan:
         mock_orc.redis    = AsyncMock()
         mock_orc.redis.ping = AsyncMock()
 
-        app.state.orchestrator = mock_orc   # ← injection directe
+        app.state.orchestrator = mock_orc   # ← direct injection
 
         async with AsyncClient(
             transport=ASGITransport(app=app),
