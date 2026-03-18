@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, status
 from pydantic import BaseModel, Field
 
 from processing_pipeline.shared.app_factory import create_worker_app
-from processing_pipeline.live_ingest.worker import LiveIngestWorker
+from processing_pipeline.live_moq.worker import LiveIngestWorker
 
 log = logging.getLogger(__name__)
 

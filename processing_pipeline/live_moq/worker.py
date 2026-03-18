@@ -44,7 +44,7 @@ log = logging.getLogger(__name__)
 # ── Constantes ────────────────────────────────────────────────────────────────
 
 MOQ_RELAY_BIN   = os.getenv("MOQ_RELAY_BIN",   "/usr/local/bin/moq-relay")
-MOQ_SUB_BIN     = os.getenv("MOQ_SUB_BIN",     "/usr/local/bin/moq-sub")
+MOQ_SUB_BIN     = os.getenv("MOQ_SUB_BIN",     "/usr/local/bin/moq-cli")
 MOQ_RELAY_ADDR  = os.getenv("MOQ_RELAY_ADDR",  "0.0.0.0:4443")
 MOQ_RELAY_URL   = os.getenv("MOQ_RELAY_URL",   "https://localhost:4443")
 MOQ_CERT_PATH   = os.getenv("MOQ_CERT_PATH",   "/certs/cert.pem")
@@ -221,10 +221,9 @@ class LiveIngestWorker(BaseWorker):
     async def _subscribe_track(self, state: LiveStreamState, track: str) -> None:
         cmd = [
             MOQ_SUB_BIN,
-            "--url",       MOQ_RELAY_URL,
-            "--namespace", state.namespace,
-            "--track",     track,
-            "--insecure",
+            "--url", f"{MOQ_RELAY_URL}/{state.namespace}",
+            "--track", track,
+            "--dev",
         ]
         log.info("[%s/%s] subscribing: %s", state.job_id, track, " ".join(cmd))
 

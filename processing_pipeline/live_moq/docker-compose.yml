@@ -1,0 +1,63 @@
+# ══════════════════════════════════════════════════════════════════════════
+  # live_moq – Ingestion live via Media over QUIC Transport (moq-rs)
+  # API FastAPI sur :8080, moq-relay QUIC sur :4443
+  # ══════════════════════════════════════════════════════════════════════════
+  ott_live_moq:
+    build:
+      context: .
+      dockerfile: processing_pipeline/live_moq/Dockerfile
+    container_name: ott_live_moq
+    restart: unless-stopped
+
+    ports:
+      - "8085:8080"        # API FastAPI  → http://localhost:8085
+      - "4443:4443/udp"    # moq-relay QUIC (UDP)
+      - "4443:4443/tcp"    # moq-relay QUIC (TCP fallback)
+
+    environment:
+      # ── MoQ-rs ──────────────────────────────────────────────────────────
+      MOQ_RELAY_BIN:   /usr/local/bin/moq-relay
+      MOQ_SUB_BIN:     /usr/local/bin/moq-sub
+      MOQ_RELAY_ADDR:  0.0.0.0:4443
+      MOQ_RELAY_URL:   https://localhost:4443
+      MOQ_CERT_PATH:   /certs/cert.pem
+      MOQ_KEY_PATH:    /certs/key.pem
+
+      # ── Segments ─────────────────────────────────────────────────────────
+      SEGMENT_DURATION:  "4"
+      SEGMENT_BUFFER_MB: "32"
+      DVR_WINDOW_S:      "60"
+      MPD_UPDATE_S:      "2"
+      PLAYER_DELAY_S:    "10"
+      MAX_STREAM_HOURS:  "12"
+
+      # ── S3 / MinIO ───────────────────────────────────────────────────────
+      AWS_ACCESS_KEY_ID:     minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION:            eu-west-1
+      AWS_ENDPOINT_URL:      http://minio:9000
+      S3_BUCKET:             ott-bucket
+
+      # ── Orchestrateur ────────────────────────────────────────────────────
+      ORCHESTRATOR_URL: http://orchestrator:8000
+
+      # ── Python ───────────────────────────────────────────────────────────
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH:       /app
+
+    depends_on:
+      - minio
+      - orchestrator
+
+    healthcheck:
+      test:     ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 15s
+      timeout:  5s
+      retries:  3
+      start_period: 25s    # moq-relay prend ~20s à compiler les certs au 1er boot
+
+    networks:
+      - ott_network
+
+    volumes:
+      - /tmp/moq_segments:/tmp   # segments temporaires hors du container
