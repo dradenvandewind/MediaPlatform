@@ -1,6 +1,6 @@
 """
-BaseWorker – classe abstraite commune à tous les nœuds du pipeline.
-Fournit : publish vers l'orchestrateur, checkpoint S3 en cas d'interruption.
+BaseWorker – abstract class common to all pipeline nodes.
+Provides: publish to the orchestrator, S3 checkpoint in case of interruption.
 """
 import asyncio
 import json
@@ -13,6 +13,7 @@ import aiohttp
 
 from processing_pipeline.shared.config import ORCHESTRATOR_URL, S3_BUCKET, S3_REGION
 from processing_pipeline.shared.s3 import S3Manager
+from processing_pipeline.shared.metrics import update_queue_metrics
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ class BaseWorker(ABC):
                 log.warning("publish failed (non-blocking): %s", exc)
 
     async def checkpoint(self, job_id: str, job_data: dict) -> None:
-        """Sauvegarde l'état du job sur S3 pour reprise après interruption."""
+        """Saves the job state on S3 for resumption after interruption."""
         payload = {
             "job_id":    job_id,
             "node_type": self.node_type,
@@ -101,7 +102,7 @@ class BaseWorker(ABC):
         """Reconstruit job_data en fusionnant input + previous_results + champs directs."""
         job_data = json.loads(fields.get("input", "{}"))
 
-        # ── Fusionner previous_results ──────────────────────────────────────
+        # ── merge previous_results ──────────────────────────────────────
         prev_raw = fields.get("previous_results")
         if prev_raw:
             try:
@@ -198,6 +199,8 @@ class BaseWorker(ABC):
         # ── Boucle principale : nouveaux messages ────────────────────────────
         while True:
             try:
+                await update_queue_metrics(r, self.node_type, stream, group)
+                
                 msgs = await r.xreadgroup(
                     group, consumer, {stream: ">"}, count=1, block=5000
                 )

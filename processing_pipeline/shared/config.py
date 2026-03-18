@@ -1,4 +1,4 @@
-"""Configuration centralisée via variables d'environnement."""
+"""Centralized configuration via environment variables."""
 import os
 
 S3_BUCKET           = os.getenv("S3_BUCKET", "my-ott-bucket")
