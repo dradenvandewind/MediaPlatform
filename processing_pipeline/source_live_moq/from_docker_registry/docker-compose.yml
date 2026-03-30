@@ -10,7 +10,8 @@ volumes:
 services:
 
   receiver:
-    image: dradenvandewind/media_over_quick_publisher:v1.0.0_moq_receiver
+    #image: dradenvandewind/media_over_quick_publisher:v1.0.0_moq_receiver
+    image: dradenvandewind/media_over_quick_publisher:v1.1.0_moq_receiver
     # build:
     #   context: ./receiver
     #   dockerfile: Dockerfile
@@ -30,7 +31,8 @@ services:
     restart: unless-stopped
 
   publisher:
-    image: dradenvandewind/media_over_quick_publisher:v1.0.0_moq_publisher
+    #image: dradenvandewind/media_over_quick_publisher:v1.0.0_moq_publisher
+    image: dradenvandewind/media_over_quick_publisher:v1.1.0_moq_publisher
 
     # build:
     #   context: ./publisher
