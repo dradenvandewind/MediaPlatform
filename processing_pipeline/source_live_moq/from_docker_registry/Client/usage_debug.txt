@@ -1,0 +1,93 @@
+# Structure des box ISO BMFF
+for f in /var/cache/nginx/segments/video/seg*.m4s; do
+    echo "=== $f ==="
+    mp4box -info "$f" 2>&1 | head -20
+done
+
+# Ou sans mp4box :
+python3 - <<'EOF'
+import sys
+from pathlib import Path
+
+def dump_boxes(path):
+    data = Path(path).read_bytes()
+    offset = 0
+    print(f"\n=== {path} ===")
+    while offset < len(data) - 8:
+        size = int.from_bytes(data[offset:offset+4], 'big')
+        typ  = data[offset+4:offset+8].decode(errors='replace')
+        print(f"  [{offset:6d}] {typ}  ({size} bytes)")
+        if size < 8: break
+        offset += size
+
+for f in sorted(Path("/var/cache/nginx/segments/video").glob("seg*.m4s")):
+    dump_boxes(f)
+EOF
+
+
+
+docker exec moq_client python3 - <<'EOF'
+from pathlib import Path
+
+def dump_boxes(path):
+    data = Path(path).read_bytes()
+    offset = 0
+    print(f"\n=== {path.name} ({len(data)} bytes) ===")
+    while offset < len(data) - 8:
+        size = int.from_bytes(data[offset:offset+4], 'big')
+        typ  = data[offset+4:offset+8].decode(errors='replace')
+        print(f"  [{offset:6d}] {typ}  ({size} bytes)")
+        if size < 8: break
+        offset += size
+
+segs = sorted(Path("/var/cache/nginx/segments/video").glob("seg*.m4s"))
+for s in segs[:4]:
+    dump_boxes(s)
+
+print("\n=== init.mp4 ===")
+init = Path("/var/cache/nginx/segments/video/init.mp4")
+if init.exists():
+    dump_boxes(init)
+EOF
+
+
+# Vérifier qu'un segment ne contient plus de moov
+python3 -c "
+from pathlib import Path
+data = Path('segments/audio/seg00005.m4s').read_bytes()
+offset = 0
+while offset < len(data) - 8:
+    sz = int.from_bytes(data[offset:offset+4], 'big')
+    bt = data[offset+4:offset+8]
+    print(f'{offset:6d} {bt}')
+    if sz < 8: break
+    offset += sz
+"
+
+
+python3 - <<'EOF'
+from pathlib import Path
+for seg in sorted(Path('/var/cache/nginx/segments').glob('seg*.m4s'))[:3]:
+    data = seg.read_bytes()
+    print(f"\n=== {seg.name} ({len(data)} bytes) ===")
+    offset = 0
+    while offset < len(data) - 8:
+        sz = int.from_bytes(data[offset:offset+4], 'big')
+        bt = data[offset+4:offset+8]
+        print(f"  {offset:6d}  {bt}  size={sz}")
+        if sz < 8 or offset > 500: break
+        offset += sz
+EOF
+
+
+python3 -c "
+from pathlib import Path
+data = Path('/var/cache/nginx/segments/seg00001.m4s').read_bytes()
+offset = 0
+while offset < len(data)-8:
+    sz = int.from_bytes(data[offset:offset+4],'big')
+    bt = data[offset+4:offset+8]
+    print(f'{offset:6d}  {bt}')
+    if sz < 8 or offset > 300: break
+    offset += sz
+"
