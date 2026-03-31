@@ -81,6 +81,17 @@ M3U8_MASTER     = OUTPUT_DIR / "master.m3u8"
 
 AST_FILE = OUTPUT_DIR / ".ast_locked"
 
+# Video encoding parameters
+VIDEO_WIDTH      = int(cfg("VIDEO_WIDTH",      "1280"))
+VIDEO_HEIGHT     = int(cfg("VIDEO_HEIGHT",     "720"))
+VIDEO_FRAMERATE  = int(cfg("VIDEO_FRAMERATE",  "30"))   # fps entier
+AUDIO_RATE       = int(cfg("AUDIO_RATE",       "48000"))
+AUDIO_CHANNELS   = int(cfg("AUDIO_CHANNELS",   "2"))
+
+# Timescales dérivées (ne pas toucher)
+VIDEO_TIMESCALE  = 90000                                 # standard RTP/MPEG, fixe
+AUDIO_TIMESCALE  = AUDIO_RATE                            # 1 unité = 1 sample
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -360,164 +371,104 @@ class ManifestWriter:
 
     # ── DASH MPD (dynamic) ────────────────────────────────────────────────
 
-    # def _write_mpd(self, segs_v: list[Path], segs_a: list[Path]) -> None:
-
-    #     timescale_v   = self._read_timescale(INIT_FILE_VIDEO)
-    #     timescale_a   = self._read_timescale(INIT_FILE_AUDIO)
-    #     first_bmdt_v  = self._read_segment_pts(segs_v[0])
-    #     first_bmdt_a  = self._read_segment_pts(segs_a[0])
-
-    #     if first_bmdt_v is None:
-    #         log.warning("MPD: tfdt introuvable dans %s — PTO forcé à 0", segs_v[0].name)
-    #         first_bmdt_v = 0
-    #     if first_bmdt_a is None:
-    #         log.warning("MPD: tfdt introuvable dans %s — PTO forcé à 0", segs_a[0].name)
-    #         first_bmdt_a = 0
-
-    #     pto_s             = first_bmdt_v / timescale_v
-    #     seg_duration_ts_v = int(SEG_DURATION_S * timescale_v)
-    #     seg_duration_ts_a = int(SEG_DURATION_S * timescale_a)
-    #     window_s          = len(segs_v) * SEG_DURATION_S
-    #     pto_a_aligned     = int(pto_s * timescale_a)
-
-    #     # AST figé une seule fois au premier appel
-    #     # if not hasattr(self, '_ast_locked'):
-    #     #     first_seg_num = self._seg_number(segs_v[0])
-    #     #     ast_epoch     = datetime.now(timezone.utc).timestamp() \
-    #     #                     - (first_seg_num * SEG_DURATION_S) \
-    #     #                     - SEG_DURATION_S
-    #     #     self._ast_locked   = ast_epoch
-    #     #     self._ast_str      = datetime.fromtimestamp(
-    #     #         ast_epoch, tz=timezone.utc
-    #     #     ).strftime("%Y-%m-%dT%H:%M:%SZ")
-    #     #     log.info("AST figé à %s (seg0=%d)", self._ast_str, first_seg_num)
-
-    #     # startNumber = numéro réel du premier segment de la fenêtre
-    #     # AST étant fixe, dash.js calcule correctement :
-    #     #   N = floor((now - AST - suggestedPresentationDelay) / SEG_DURATION_S)
-    #     # qui doit tomber dans [startNumber_v .. startNumber_v + WINDOW_SEGMENTS]
-    #     start_v = self._seg_number(segs_v[0])
-    #     start_a = self._seg_number(segs_a[0])
-        
-    #     last_v    = self._seg_number(segs_v[-1])
-    #     now_s     = datetime.now(timezone.utc).timestamp()
-    #     spd_s     = SEG_DURATION_S * 2
-    #     ast_epoch = now_s - spd_s - (last_v - 1) * SEG_DURATION_S
-
-        
-    #     #ast_epoch = now_s - (last_v * SEG_DURATION_S) - SEG_DURATION_S
-    #     self._ast_str   = datetime.fromtimestamp(ast_epoch, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    #     def make_seg_list(segs, init_file, timescale, duration_ts, pto, start_number):
-    #         init_rel    = os.path.relpath(init_file, OUTPUT_DIR)
-    #         seg_rel_dir = os.path.relpath(segs[0].parent, OUTPUT_DIR)
-    #         return (
-    #             f'        <SegmentTemplate timescale="{timescale}"\n'
-    #             f'                         duration="{duration_ts}"\n'
-    #             f'                         presentationTimeOffset="{pto}"\n'
-    #             f'                         startNumber="{start_number}"\n'
-    #             f'                         initialization="{init_rel}"\n'
-    #             f'                         media="{seg_rel_dir}/seg$Number%05d$.m4s"/>\n'
-    #         )
-
-    #     mpd = (
-    #         '<?xml version="1.0" encoding="UTF-8"?>\n'
-    #         '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"\n'
-    #         '     profiles="urn:mpeg:dash:profile:isoff-live:2011"\n'
-    #         '     type="dynamic"\n'
-    #         f'     availabilityStartTime="{self._ast_str}"\n'
-    #         f'     minimumUpdatePeriod="PT{SEG_DURATION_S:.1f}S"\n'
-    #         f'     timeShiftBufferDepth="PT{window_s:.1f}S"\n'
-    #         f'     suggestedPresentationDelay="PT{SEG_DURATION_S * 3:.1f}S"\n'
-    #         f'     minBufferTime="PT{SEG_DURATION_S:.1f}S">\n'
-    #         '  <UTCTiming schemeIdUri="urn:mpeg:dash:utc:http-xsdate:2014"\n'
-    #         '             value="http://time.akamai.com/?iso"/>\n'
-    #         '  <Period id="1" start="PT0S">\n'
-    #         '    <AdaptationSet id="1" mimeType="video/mp4" codecs="avc1.42c01f"\n'
-    #         '                   frameRate="30" segmentAlignment="true" startWithSAP="1">\n'
-    #         '      <Representation id="video" bandwidth="2000000" width="1280" height="720">\n'
-    #         + make_seg_list(segs_v, INIT_FILE_VIDEO, timescale_v,
-    #                         seg_duration_ts_v, first_bmdt_v, start_v) +
-    #         '      </Representation>\n'
-    #         '    </AdaptationSet>\n'
-    #         '    <AdaptationSet id="2" mimeType="audio/mp4" codecs="mp4a.40.2"\n'
-    #         '                   lang="fr" segmentAlignment="true">\n'
-    #         '      <Representation id="audio" bandwidth="128000" audioSamplingRate="48000">\n'
-    #         '        <AudioChannelConfiguration\n'
-    #         '            schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011"\n'
-    #         '            value="2"/>\n'
-    #         + make_seg_list(segs_a, INIT_FILE_AUDIO, timescale_a,
-    #                         seg_duration_ts_a, pto_a_aligned, start_a) +
-    #         '      </Representation>\n'
-    #         '    </AdaptationSet>\n'
-    #         '  </Period>\n'
-    #         '</MPD>\n'
-    #     )
-    #     tmp = MPD_FILE.with_suffix(".tmp")
-    #     tmp.write_text(mpd)
-    #     tmp.replace(MPD_FILE)
-    #     log.info("MPD  ast=%s  pto=%.1fs  start_v=%d  start_a=%d  v=%d segs  a=%d segs",
-    #             self._ast_str, pto_s, start_v, start_a, len(segs_v), len(segs_a))
     def _write_mpd(self, segs_v: list[Path], segs_a: list[Path]) -> None:
+        
+        
 
-        timescale_v      = 90000   # natif H.264, plus besoin de lire init.mp4
-        timescale_a      = 48000
-        seg_duration_ts_v = int(SEG_DURATION_S * timescale_v)   # 180000
-        seg_duration_ts_a = int(SEG_DURATION_S * timescale_a)   # 96000
+        timescale_v   = self._read_timescale(INIT_FILE_VIDEO)
+        timescale_a   = self._read_timescale(INIT_FILE_AUDIO)
+        first_bmdt_v  = self._read_segment_pts(segs_v[0])
+        first_bmdt_a  = self._read_segment_pts(segs_a[0])
+        
 
-        publish_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        # AST (inchangée — ton mécanisme AST_FILE reste tel quel)
-        if AST_FILE.exists():
-            self._ast_locked = AST_FILE.read_text().strip()
-        else:
-            t0 = self._stream_start_epoch()
-            if t0 is None:
-                return
-            seg0_num = self._seg_number(segs_v[0])
-            ast_epoch = t0 - seg0_num * SEG_DURATION_S
-            self._ast_locked = datetime.fromtimestamp(
-                ast_epoch, tz=timezone.utc
-            ).strftime("%Y-%m-%dT%H:%M:%SZ")
-            AST_FILE.write_text(self._ast_locked)
+        if first_bmdt_v is None:
+            log.warning("MPD: tfdt introuvable dans %s — PTO forcé à 0", segs_v[0].name)
+            first_bmdt_v = 0
+        if first_bmdt_a is None:
+            log.warning("MPD: tfdt introuvable dans %s — PTO forcé à 0", segs_a[0].name)
+            first_bmdt_a = 0
 
-        # startNumber = numéro du premier seg de la fenêtre
+        pto_s             = first_bmdt_v / timescale_v
+        seg_duration_ts_v = int(SEG_DURATION_S * timescale_v)
+        seg_duration_ts_a = int(SEG_DURATION_S * timescale_a)
+        window_s          = len(segs_v) * SEG_DURATION_S
+        pto_a_aligned     = int(pto_s * timescale_a)
+        
+        timescale_v = 90000
+        seg_duration_ts_v = 180000
+        timescale_a = 48000
+        seg_duration_ts_a = 96000
+
+        # AST figé une seule fois au premier appel
+        # if not hasattr(self, '_ast_locked'):
+        #     first_seg_num = self._seg_number(segs_v[0])
+        #     ast_epoch     = datetime.now(timezone.utc).timestamp() \
+        #                     - (first_seg_num * SEG_DURATION_S) \
+        #                     - SEG_DURATION_S
+        #     self._ast_locked   = ast_epoch
+        #     self._ast_str      = datetime.fromtimestamp(
+        #         ast_epoch, tz=timezone.utc
+        #     ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        #     log.info("AST figé à %s (seg0=%d)", self._ast_str, first_seg_num)
+
+        # startNumber = numéro réel du premier segment de la fenêtre
+        # AST étant fixe, dash.js calcule correctement :
+        #   N = floor((now - AST - suggestedPresentationDelay) / SEG_DURATION_S)
+        # qui doit tomber dans [startNumber_v .. startNumber_v + WINDOW_SEGMENTS]
         start_v = self._seg_number(segs_v[0])
         start_a = self._seg_number(segs_a[0])
+        
+        last_v    = self._seg_number(segs_v[-1])
+        now_s     = datetime.now(timezone.utc).timestamp()
+        spd_s     = SEG_DURATION_S * 2
+        ast_epoch = now_s - spd_s - (last_v - 1) * SEG_DURATION_S
+
+        
+        #ast_epoch = now_s - (last_v * SEG_DURATION_S) - SEG_DURATION_S
+        self._ast_str   = datetime.fromtimestamp(ast_epoch, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        def make_seg_list(segs, init_file, timescale, duration_ts, pto, start_number):
+            init_rel    = os.path.relpath(init_file, OUTPUT_DIR)
+            seg_rel_dir = os.path.relpath(segs[0].parent, OUTPUT_DIR)
+            return (
+                f'        <SegmentTemplate timescale="{timescale}"\n'
+                f'                         duration="{duration_ts}"\n'
+                f'                         startNumber="{start_number}"\n'
+                f'                         initialization="{init_rel}"\n'
+                f'                         media="{seg_rel_dir}/seg$Number%05d$.m4s"/>\n'
+            )
+            # f'                         presentationTimeOffset="{pto}"\n'
+
 
         mpd = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"\n'
             '     profiles="urn:mpeg:dash:profile:isoff-live:2011"\n'
             '     type="dynamic"\n'
-            f'     publishTime="{publish_time}"\n'
-            f'     availabilityStartTime="{self._ast_locked}"\n'
-            f'     minimumUpdatePeriod="PT{SEG_DURATION_S:.0f}S"\n'
-            '     minBufferTime="PT4S">\n'
-            '  <Period id="p0" start="PT0S">\n'
-            '    <AdaptationSet id="0" contentType="video"\n'
-            '                   segmentAlignment="true" bitstreamSwitching="true">\n'
-            '      <Representation id="v0" mimeType="video/mp4" codecs="avc1.64001f"\n'
-            '                      bandwidth="2500000" width="1280" height="720" frameRate="30">\n'
-            f'        <SegmentTemplate timescale="{timescale_v}"\n'
-            f'                         duration="{seg_duration_ts_v}"\n'
-            f'                         startNumber="{start_v}"\n'
-            '                         initialization="segments/video/init.mp4"\n'
-            '                         media="segments/video/seg$Number%05d$.m4s"/>\n'
+            f'     availabilityStartTime="{self._ast_str}"\n'
+            f'     minimumUpdatePeriod="PT{SEG_DURATION_S:.1f}S"\n'
+            f'     timeShiftBufferDepth="PT{window_s:.1f}S"\n'
+            f'     suggestedPresentationDelay="PT{SEG_DURATION_S * 3:.1f}S"\n'
+            f'     minBufferTime="PT{SEG_DURATION_S:.1f}S">\n'
+            '  <UTCTiming schemeIdUri="urn:mpeg:dash:utc:http-xsdate:2014"\n'
+            '             value="http://time.akamai.com/?iso"/>\n'
+            '  <Period id="1" start="PT0S">\n'
+            '    <AdaptationSet id="1" mimeType="video/mp4" codecs="avc1.42c01f"\n'
+            f'             frameRate="{VIDEO_FRAMERATE}" segmentAlignment="true" startWithSAP="1">\n'
+            f'      <Representation id="video" bandwidth="2000000" width="{VIDEO_WIDTH}" height="{VIDEO_HEIGHT}">\n'
+            + make_seg_list(segs_v, INIT_FILE_VIDEO, timescale_v,
+                            seg_duration_ts_v, first_bmdt_v, start_v) +
             '      </Representation>\n'
             '    </AdaptationSet>\n'
-            '    <AdaptationSet id="1" contentType="audio"\n'
-            '                   segmentAlignment="true" lang="fr">\n'
-            '      <AudioChannelConfiguration\n'
-            '          schemeIdUri="urn:mpeg:mpegB:cicp:ChannelConfiguration"\n'
-            '          value="2"/>\n'
-            '      <Representation id="a1" mimeType="audio/mp4" codecs="mp4a.40.2"\n'
-            '                      bandwidth="128000" audioSamplingRate="48000">\n'
-            f'        <SegmentTemplate timescale="{timescale_a}"\n'
-            f'                         duration="{seg_duration_ts_a}"\n'
-            f'                         startNumber="{start_a}"\n'
-            '                         initialization="segments/audio/init.mp4"\n'
-            '                         media="segments/audio/seg$Number%05d$.m4s"/>\n'
+            '    <AdaptationSet id="2" mimeType="audio/mp4" codecs="mp4a.40.2"\n'
+            '    lang="fr" segmentAlignment="true">\n'
+            f'      <Representation id="audio" bandwidth="128000" audioSamplingRate="{AUDIO_RATE}">\n'
+            '        <AudioChannelConfiguration\n'
+            '            schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011"\n'
+            '            value="2"/>\n'
+            + make_seg_list(segs_a, INIT_FILE_AUDIO, timescale_a,
+                            seg_duration_ts_a, pto_a_aligned, start_a) +
             '      </Representation>\n'
             '    </AdaptationSet>\n'
             '  </Period>\n'
@@ -526,9 +477,9 @@ class ManifestWriter:
         tmp = MPD_FILE.with_suffix(".tmp")
         tmp.write_text(mpd)
         tmp.replace(MPD_FILE)
-        log.info("MPD  ast=%s  publish=%s  v=%d[%d]  a=%d[%d]",
-                self._ast_locked, publish_time,
-                len(segs_v), start_v, len(segs_a), start_a)
+        log.info("MPD  ast=%s  pto=%.1fs  start_v=%d  start_a=%d  v=%d segs  a=%d segs",
+                self._ast_str, pto_s, start_v, start_a, len(segs_v), len(segs_a))
+    
     # ── HLS (ffprobe duration) ────────────────────────────────────────────
 
     def _write_hls(self, segs_v: list[Path], segs_a: list[Path]) -> None:
@@ -634,8 +585,14 @@ def build_pipeline(on_segment_written) -> Gst.Pipeline:
     vid_q1.set_property("max-size-time", 4 * Gst.SECOND)
     vid_q2.set_property("max-size-time", 4 * Gst.SECOND)
     h264parse.set_property("config-interval", -1)
+    # vid_caps.set_property("caps", Gst.Caps.from_string(
+    #     "video/x-h264,stream-format=avc,alignment=au"
+    # ))
+    
     vid_caps.set_property("caps", Gst.Caps.from_string(
-        "video/x-h264,stream-format=avc,alignment=au"
+    f"video/x-h264,stream-format=avc,alignment=au,"
+    f"width={VIDEO_WIDTH},height={VIDEO_HEIGHT},"
+    f"framerate={VIDEO_FRAMERATE}/1"
     ))
 
     # ── Audio branch ──────────────────────────────────────────────────────
@@ -650,9 +607,14 @@ def build_pipeline(on_segment_written) -> Gst.Pipeline:
     aud_src.set_property("port", AUDIO_PORT)
     aud_q1.set_property("max-size-time", 4 * Gst.SECOND)
     aud_q2.set_property("max-size-time", 4 * Gst.SECOND)
+    # aud_caps.set_property("caps", Gst.Caps.from_string(
+    #     "audio/mpeg,mpegversion=4,stream-format=raw"
+    # ))
     aud_caps.set_property("caps", Gst.Caps.from_string(
-        "audio/mpeg,mpegversion=4,stream-format=raw"
+    f"audio/mpeg,mpegversion=4,stream-format=raw,"
+    f"rate={AUDIO_RATE},channels={AUDIO_CHANNELS}"
     ))
+    
 
     # ── splitmuxsink vidéo (cmafmux vidéo seule) ──────────────────────────
     cmafmux_v  = make_element("cmafmux",      "cmafmux_v")
@@ -661,8 +623,7 @@ def build_pipeline(on_segment_written) -> Gst.Pipeline:
     cmafmux_v.set_property("chunk-duration",    FRAG_DURATION_MS * Gst.MSECOND)
     #cmafmux_v.set_property("fragment-duration", SEG_DURATION_MS  * Gst.MSECOND)
     cmafmux_v.set_property("fragment-duration", 0)  # Laisser splitmux gérer la durée des fragments pour éviter les segments courts en fin de segment
-    
-    
+
     splitmux_v.set_property("muxer",                  cmafmux_v)
     splitmux_v.set_property("max-size-time",          SEG_DURATION_MS * Gst.MSECOND)
     splitmux_v.set_property("send-keyframe-requests", True)
@@ -736,11 +697,37 @@ def build_pipeline(on_segment_written) -> Gst.Pipeline:
 
     vid_demux.connect("pad-added", on_demux_pad_added, vid_q2)
     aud_demux.connect("pad-added", on_demux_pad_added, aud_q2)
+    
+    def set_timescales(pipeline):
+        
+            #test  fix
+        cmafmux_v.set_property("movie-timescale", 90000)
+        cmafmux_v.set_property("fragment-duration", 2000000) 
+        cmafmux_a.set_property("movie-timescale", 48000)
+        cmafmux_a.set_property("fragment-duration", 2000000)
+    
+        # Accès au pad sink de cmafmux_v
+        pad_v = cmafmux_v.get_static_pad("sink")
+        if pad_v:
+            pad_v.set_property("trak-timescale", 90000)
+        else:
+            # splitmuxsink crée un pad "video" ou "sink"
+            pad_v = cmafmux_v.get_static_pad("video")
+            if pad_v:
+                pad_v.set_property("trak-timescale", 90000)
+
+        pad_a = cmafmux_a.get_static_pad("sink")
+        if pad_a:
+            pad_a.set_property("trak-timescale", 48000)
 
     # ── READY → request pads ─────────────────────────────────────────────
     ret = pipeline.set_state(Gst.State.READY)
     if ret == Gst.StateChangeReturn.FAILURE:
         raise RuntimeError("Pipeline failed to go to READY")
+    
+    set_timescales(pipeline)
+
+
     pipeline.get_state(timeout=Gst.SECOND * 5)
 
     def link_to_splitmux(src_el, splitmux, pad_name, label):
@@ -801,6 +788,8 @@ class MultiFormatStreamer:
         log.info("  Output : %s", OUTPUT_DIR)
         log.info("  Seg %d ms  Frag %d ms  (%d frags/seg)",
                  SEG_DURATION_MS, FRAG_DURATION_MS, FRAGS_PER_SEG)
+        log.info("  Video  : %dx%d @ %d fps", VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FRAMERATE)
+        log.info("  Audio  : %d Hz  %d ch", AUDIO_RATE, AUDIO_CHANNELS)
 
         self.pipeline = build_pipeline(self._on_segment_written)
         self._manifest_writer.start()
@@ -813,6 +802,9 @@ class MultiFormatStreamer:
         ret = self.pipeline.set_state(Gst.State.PLAYING)
         if ret == Gst.StateChangeReturn.FAILURE:
             raise RuntimeError("Pipeline failed to go to PLAYING")
+        Gst.debug_bin_to_dot_file(
+            self.pipeline, Gst.DebugGraphDetails.ALL, "after_cmaf_multi"
+        )
 
         log.info("Pipeline PLAYING  MPD=%s  M3U8=%s", MPD_FILE, M3U8_MASTER)
         await asyncio.get_running_loop().run_in_executor(None, glib_loop.run)
