@@ -1,0 +1,206 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: video-cache-data
+  namespace: ott
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+# ── Edge Cache ────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge-cache
+  namespace: ott
+  labels:
+    app: edge-cache
+    pipeline: ott
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: edge-cache
+  template:
+    metadata:
+      labels:
+        app: edge-cache
+        pipeline: ott
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: nginx_cache.conf
+            - name: video-cache
+              mountPath: /var/cache/nginx
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-cache-config
+        - name: video-cache
+          persistentVolumeClaim:
+            claimName: video-cache-data
+
+---
+# ConfigMap pour la conf nginx — adapter selon ton nginx_cache.conf réel
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-cache-config
+  namespace: ott
+data:
+  nginx_cache.conf: |
+    proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=video_cache:10m
+                     max_size=10g inactive=60m use_temp_path=off;
+
+    server {
+        listen 80;
+
+        location /vod/ {
+            proxy_pass         http://minio:9000/ott-bucket/;
+            proxy_cache        video_cache;
+            proxy_cache_valid  200 1h;
+            proxy_cache_use_stale error timeout updating;
+            add_header         X-Cache-Status $upstream_cache_status;
+        }
+
+        location /metrics {
+            stub_status on;
+            access_log  off;
+        }
+    }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edge-cache
+  namespace: ott
+spec:
+  selector:
+    app: edge-cache
+  ports:
+    - port: 80
+      targetPort: 80
+
+---
+# ── Player ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: player
+  namespace: ott
+  labels:
+    app: player
+    pipeline: ott
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: player
+  template:
+    metadata:
+      labels:
+        app: player
+        pipeline: ott
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: player-files
+              mountPath: /usr/share/nginx/html
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: player-files
+          # Monter via un ConfigMap ou une image qui contient les fichiers HTML/JS
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: player
+  namespace: ott
+spec:
+  selector:
+    app: player
+  ports:
+    - port: 80
+      targetPort: 80
+
+---
+# ── Nginx Exporter ────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-exporter
+  namespace: ott
+  labels:
+    app: nginx-exporter
+    pipeline: ott
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-exporter
+  template:
+    metadata:
+      labels:
+        app: nginx-exporter
+        pipeline: ott
+    spec:
+      containers:
+        - name: nginx-exporter
+          image: nginx/nginx-prometheus-exporter:latest
+          args:
+            - "-nginx.scrape-uri=http://edge-cache:80/metrics"
+          ports:
+            - containerPort: 9113
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-exporter
+  namespace: ott
+  labels:
+    app: nginx-exporter
+spec:
+  selector:
+    app: nginx-exporter
+  ports:
+    - port: 9113
+      targetPort: 9113

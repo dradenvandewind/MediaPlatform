@@ -1,0 +1,81 @@
+---
+# Ingress global — nécessite nginx-ingress-controller installé sur le cluster
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/baremetal/deploy.yaml
+#
+# Adapter les hosts selon ton DNS / /etc/hosts pour un cluster local
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ott-ingress
+  namespace: ott
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size:     "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout:  "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout:  "3600"
+    # TLS avec cert-manager : décommenter les lignes ci-dessous
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  # tls:
+  #   - hosts:
+  #       - ott.example.com
+  #       - grafana.ott.example.com
+  #       - minio.ott.example.com
+  #     secretName: ott-tls
+  rules:
+    - host: ott.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: player
+                port:
+                  number: 80
+
+          - path: /vod
+            pathType: Prefix
+            backend:
+              service:
+                name: edge-cache
+                port:
+                  number: 80
+
+          - path: /api/ingest
+            pathType: Prefix
+            backend:
+              service:
+                name: ingest
+                port:
+                  number: 8080
+          - path: /api/orchestrator
+            pathType: Prefix
+            backend:
+              service:
+                name: orchestrator
+                port:
+                  number: 8000
+
+    - host: grafana.ott.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+
+    - host: minio.ott.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  number: 9001

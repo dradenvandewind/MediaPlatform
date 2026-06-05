@@ -1,0 +1,163 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moq-segments
+  namespace: ott
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: live-moq
+  namespace: ott
+  labels:
+    app: live-moq
+    pipeline: ott
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: live-moq
+  template:
+    metadata:
+      labels:
+        app: live-moq
+        pipeline: ott
+    spec:
+      containers:
+        - name: live-moq
+          image: 192.168.1.29:5000/ott-live-moq:latest
+          imagePullPolicy: Always
+          ports:
+            - name: api
+              containerPort: 8080
+              protocol: TCP
+            - name: moq-quic-udp
+              containerPort: 4443
+              protocol: UDP
+            - name: moq-quic-tcp
+              containerPort: 4443
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: ott-common-env
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: ott-secrets
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ott-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: MOQ_RELAY_BIN
+              value: "/usr/local/bin/moq-relay"
+            - name: MOQ_SUB_BIN
+              value: "/usr/local/bin/moq-sub"
+            - name: MOQ_RELAY_ADDR
+              value: "0.0.0.0:4443"
+            - name: MOQ_RELAY_URL
+              value: "https://live-moq:4443"
+            - name: MOQ_CERT_PATH
+              value: "/certs/cert.pem"
+            - name: MOQ_KEY_PATH
+              value: "/certs/key.pem"
+            - name: SEGMENT_DURATION
+              value: "4"
+            - name: SEGMENT_BUFFER_MB
+              value: "32"
+            - name: DVR_WINDOW_S
+              value: "60"
+            - name: MPD_UPDATE_S
+              value: "2"
+            - name: PLAYER_DELAY_S
+              value: "10"
+            - name: MAX_STREAM_HOURS
+              value: "12"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: PYTHONPATH
+              value: "/app"
+          volumeMounts:
+            - name: moq-segments
+              mountPath: /tmp
+            # Monter tes certs TLS (via un Secret TLS ou cert-manager)
+            # - name: moq-certs
+            #   mountPath: /certs
+            #   readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 25
+            periodSeconds: 15
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+      volumes:
+        - name: moq-segments
+          persistentVolumeClaim:
+            claimName: moq-segments
+        # - name: moq-certs
+        #   secret:
+        #     secretName: moq-tls-certs
+
+---
+# Service TCP pour l'API FastAPI
+apiVersion: v1
+kind: Service
+metadata:
+  name: live-moq
+  namespace: ott
+spec:
+  selector:
+    app: live-moq
+  ports:
+    - name: api
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+
+---
+# Service LoadBalancer séparé pour QUIC (UDP) — nécessite un LB qui supporte UDP
+# Sur bare-metal avec MetalLB, assigner une IP fixe via annotation
+apiVersion: v1
+kind: Service
+metadata:
+  name: live-moq-quic
+  namespace: ott
+  annotations:
+    # metallb.universe.tf/loadBalancerIPs: "192.168.1.200"  # décommenter avec MetalLB
+spec:
+  selector:
+    app: live-moq
+  type: LoadBalancer
+  ports:
+    - name: moq-udp
+      port: 4443
+      targetPort: 4443
+      protocol: UDP
+    - name: moq-tcp
+      port: 4443
+      targetPort: 4443
+      protocol: TCP
