@@ -1,0 +1,318 @@
+---
+# ── Ingest (replicas: 1) ──────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest
+  namespace: ott
+  labels:
+    app: ingest
+    pipeline: ott
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingest
+  template:
+    metadata:
+      labels:
+        app: ingest
+        pipeline: ott
+    spec:
+      containers:
+        - name: ingest
+          image: 192.168.1.29:5000/ingest:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: ott-common-env
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: ott-secrets
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ott-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingest
+  namespace: ott
+spec:
+  selector:
+    app: ingest
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
+# ── Transcoder (replicas: 2, HPA-ready) ──────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transcoder
+  namespace: ott
+  labels:
+    app: transcoder
+    pipeline: ott
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: transcoder
+  template:
+    metadata:
+      labels:
+        app: transcoder
+        pipeline: ott
+    spec:
+      containers:
+        - name: transcoder
+          image: 192.168.1.29:5000/transcoder:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: ott-common-env
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: ott-secrets
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ott-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 4000m
+              memory: 8Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transcoder
+  namespace: ott
+spec:
+  selector:
+    app: transcoder
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
+# HPA pour le transcoder
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: transcoder-hpa
+  namespace: ott
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: transcoder
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# ── Audio (replicas: 2) ───────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audio
+  namespace: ott
+  labels:
+    app: audio
+    pipeline: ott
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: audio
+  template:
+    metadata:
+      labels:
+        app: audio
+        pipeline: ott
+    spec:
+      containers:
+        - name: audio
+          image: 192.168.1.29:5000/audio:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: ott-common-env
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: ott-secrets
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ott-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: audio
+  namespace: ott
+spec:
+  selector:
+    app: audio
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
+# ── Packager (replicas: 2) ────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: packager
+  namespace: ott
+  labels:
+    app: packager
+    pipeline: ott
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: packager
+  template:
+    metadata:
+      labels:
+        app: packager
+        pipeline: ott
+    spec:
+      containers:
+        - name: packager
+          image: 192.168.1.29:5000/packager:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: ott-common-env
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: ott-secrets
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ott-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: packager
+  namespace: ott
+spec:
+  selector:
+    app: packager
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -1,0 +1,41 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ott
+  labels:
+    app.kubernetes.io/part-of: ott-pipeline
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ott-common-env
+  namespace: ott
+data:
+  AWS_REGION:           "eu-west-1"
+  S3_BUCKET:            "ott-bucket"
+  ORCHESTRATOR_URL:     "http://orchestrator:8000"
+  REDIS_URL:            "redis://redis:6379"
+  MULTIPART_THRESHOLD:  "104857600"
+  CHUNK_SIZE:           "8388608"
+  MAX_RETRIES:          "3"
+  RETRY_DELAY:          "1.0"
+  AWS_ENDPOINT_URL:     "http://minio:9000"
+
+---
+# Secrets à remplir ou remplacer par External Secrets / Sealed Secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ott-secrets
+  namespace: ott
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID:     "minioadmin"
+  AWS_SECRET_ACCESS_KEY: "minioadmin"
+  POSTGRES_USER:         "ott"
+  POSTGRES_PASSWORD:     "ott"
+  POSTGRES_DB:           "ott"
+  GRAFANA_USER:          "admin"
+  GRAFANA_PASSWORD:      "admin"
