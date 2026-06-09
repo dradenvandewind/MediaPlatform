@@ -39,8 +39,7 @@ spec:
               done
       containers:
         - name: orchestrator
-          # Remplacer par ton image buildée et pushée dans ton registry
-          image: your-registry/media-orchestrator:latest
+          image: 192.168.1.29:5000/orchestrator:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

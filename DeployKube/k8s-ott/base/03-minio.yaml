@@ -5,6 +5,7 @@ metadata:
   name: minio-data
   namespace: ott
 spec:
+  storageClassName: local-path
   accessModes:
     - ReadWriteOnce
   resources:
@@ -34,7 +35,7 @@ spec:
       containers:
         - name: minio
           image: minio/minio:latest
-          command: ["server", "/data", "--console-address", ":9001"]
+          command: ["minio", "server", "/data", "--console-address", ":9001"]  # ← fix ici
           ports:
             - name: api
               containerPort: 9000

@@ -5,6 +5,7 @@ metadata:
   name: pg-data
   namespace: ott
 spec:
+  storageClassName: local-path
   accessModes:
     - ReadWriteOnce
   resources:
