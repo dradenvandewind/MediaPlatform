@@ -9,29 +9,21 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.models import AdvanceJobRequest, FailJobRequest, JobStatus, JobSubmitRequest, LiveJobSubmitRequest
-from app.orchestrator import JobNotFoundError, OrchestratorError, MediaOrchestrator
+from app.models import AdvanceJobRequest, FailJobRequest, JobStatus, JobSubmitRequest
+from app.orchestrator import JobNotFoundError, OrchestratorError, OTTOrchestrator
 from .deps import get_orchestrator
-from typing import Annotated, Optional
-from fastapi import Query, Depends
-import json
-import logging
-
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
-
-logger = logging.getLogger(__name__)
 
 
 @router.post("/submit", status_code=201)
 async def submit_job(
     body: JobSubmitRequest,
     request: Request,
-    orc: MediaOrchestrator = Depends(get_orchestrator),
+    orc: OTTOrchestrator = Depends(get_orchestrator),
 ):
     try:
-        #job_id    = f"job-{uuid.uuid4().hex[:12]}"
-        job_id    = f"{uuid.uuid4().hex[:12]}"
+        job_id    = f"job-{uuid.uuid4().hex[:12]}"
         now       = datetime.now(timezone.utc).isoformat()
         job_input = body.model_dump()
 
@@ -44,15 +36,13 @@ async def submit_job(
             metadata      = job_input,
             results       = {},
         )
-        logger.info("Submitting job %s: %s", job_id, job_input)
         await orc.save_job(status)
         await orc.send_to_stage("ingest", {
             "job_id":        job_id,
             "created_at":    now,
-            "input":         json.dumps(job_input),
+            "input":         job_input,
             "current_stage": "ingest",
         })
-        #  "input":         job_input,
 
         return {
             "success":    True,
@@ -69,8 +59,8 @@ async def submit_job(
 
 @router.get("/list")
 async def list_jobs(
-    status: Annotated[Optional[str], Query(description="Filtrer: pending|processing|completed|failed")] = None,
-    orc: MediaOrchestrator = Depends(get_orchestrator),
+    status: Optional[str] = Query(None, description="Filtrer: pending|processing|completed|failed"),
+    orc: OTTOrchestrator = Depends(get_orchestrator),
 ):
     try:
         jobs = await orc.list_jobs(status_filter=status)
@@ -82,7 +72,7 @@ async def list_jobs(
 @router.get("/{job_id}/status")
 async def get_job_status(
     job_id: str,
-    orc: MediaOrchestrator = Depends(get_orchestrator),
+    orc: OTTOrchestrator = Depends(get_orchestrator),
 ):
     try:
         job = await orc.load_job(job_id)
@@ -99,7 +89,7 @@ async def get_job_status(
 async def advance_job(
     job_id: str,
     body: AdvanceJobRequest,
-    orc: MediaOrchestrator = Depends(get_orchestrator),
+    orc: OTTOrchestrator = Depends(get_orchestrator),
 ):
     try:
         job = await orc.load_job(job_id)
@@ -152,7 +142,7 @@ async def advance_job(
 async def mark_job_failed(
     job_id: str,
     body: FailJobRequest,
-    orc: MediaOrchestrator = Depends(get_orchestrator),
+    orc: OTTOrchestrator = Depends(get_orchestrator),
 ):
     try:
         job = await orc.load_job(job_id)
@@ -177,7 +167,7 @@ async def mark_job_failed(
 @router.delete("/{job_id}")
 async def delete_job(
     job_id: str,
-    orc: MediaOrchestrator = Depends(get_orchestrator),
+    orc: OTTOrchestrator = Depends(get_orchestrator),
 ):
     try:
         job = await orc.load_job(job_id)
@@ -189,40 +179,3 @@ async def delete_job(
         raise
     except OrchestratorError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
- 
- 
-@router.post("/jobs/live/submit", status_code=201)
-async def submit_live_job(
-    body: LiveJobSubmitRequest,
-    orc: MediaOrchestrator = Depends(get_orchestrator),
-):
-    job_id = f"{uuid.uuid4().hex[:12]}"
-    now    = datetime.now(timezone.utc).isoformat()
-
-    job_input = body.model_dump()
-
-    status = JobStatus(
-        job_id        = job_id,
-        status        = "pending",
-        current_stage = "live_moq",
-        created_at    = now,
-        updated_at    = now,
-        metadata      = job_input,
-        results       = {},
-    )
-    await orc.save_job(status)
-
-    # Envoie dans le stream Redis jobs:live_moq
-    await orc.send_to_stage("live_moq", {
-        "job_id":        job_id,
-        "created_at":    now,
-        "input":         json.dumps(job_input),
-        "current_stage": "live_moq",
-    })
-
-    return {
-        "success":  True,
-        "job_id":   job_id,
-        "message":  "Live job submitted",
-        "stop_url": f"/jobs/live/{job_id}/stop",
-    }

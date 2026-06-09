@@ -4,6 +4,12 @@ from pydantic import BaseModel, validator
 
 VALID_RESOLUTIONS = {"2160p", "1080p", "720p", "480p", "360p"}
 
+class LiveJobSubmitRequest(BaseModel):
+    stream_url:       str
+    output_name:      str
+    profile:          str = "hls"
+    segment_duration: int = 2
+    
 class JobSubmitRequest(BaseModel):
     video_url: str
     title:       str = "untitled"
