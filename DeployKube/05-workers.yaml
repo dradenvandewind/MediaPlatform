@@ -83,7 +83,7 @@ metadata:
     app: transcoder
     pipeline: ott
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: transcoder
@@ -159,7 +159,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: transcoder
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 8
   metrics:
     - type: Resource
@@ -180,7 +180,7 @@ metadata:
     app: audio
     pipeline: ott
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: audio
@@ -254,7 +254,7 @@ metadata:
     app: packager
     pipeline: ott
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: packager
